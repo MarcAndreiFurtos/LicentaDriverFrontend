@@ -18,7 +18,7 @@ export default function LoginScreen() {
               <Truck className="w-4 h-4 text-green-600 absolute -bottom-1 -right-1" />
             </div>
           </div>
-          <CardTitle className="text-2xl font-bold text-gray-900">EcoDriver</CardTitle>
+          <CardTitle className="text-2xl font-bold text-gray-900">SgrPickup</CardTitle>
           <CardDescription className="text-gray-600">
             Sign in to start collecting recyclables and earning money
           </CardDescription>

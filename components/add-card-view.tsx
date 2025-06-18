@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -40,192 +40,197 @@ declare global {
 
 export default function AddCardView({ userData, onBack }: AddCardViewProps) {
   const { user } = useAuth0()
-  const [formData, setFormData] = useState({
-    cardNumber: "",
-    expiryDate: "",
-    cvc: "",
-    phoneNumber: "",
-  })
+  const [phoneNumber, setPhoneNumber] = useState("")
   const [isProcessing, setIsProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   const [stripeLoaded, setStripeLoaded] = useState(false)
+  const [elementsReady, setElementsReady] = useState(false)
+
+  // Refs for Stripe Elements
+  const cardElementRef = useRef<HTMLDivElement>(null)
+  const stripeRef = useRef<any>(null)
+  const elementsRef = useRef<any>(null)
+  const cardElementInstanceRef = useRef<any>(null)
+  const scriptLoadedRef = useRef(false)
 
   useEffect(() => {
-    // Load Stripe.js
-    const script = document.createElement("script")
-    script.src = "https://js.stripe.com/v3/"
-    script.async = true
-    script.onload = () => {
+    // Check if Stripe is already loaded
+    if (window.Stripe && !scriptLoadedRef.current) {
+      scriptLoadedRef.current = true
       setStripeLoaded(true)
+      initializeStripeElements()
+      return
     }
-    document.head.appendChild(script)
+
+    // Only load script if not already loaded
+    if (!scriptLoadedRef.current) {
+      const existingScript = document.querySelector('script[src*="stripe.com/v3"]')
+      if (existingScript) {
+        // Script already exists, wait for it to load
+        existingScript.addEventListener("load", () => {
+          if (!scriptLoadedRef.current) {
+            scriptLoadedRef.current = true
+            setStripeLoaded(true)
+            initializeStripeElements()
+          }
+        })
+        return
+      }
+
+      // Load Stripe.js
+      const script = document.createElement("script")
+      script.src = "https://js.stripe.com/v3/"
+      script.async = true
+      script.onload = () => {
+        if (!scriptLoadedRef.current) {
+          scriptLoadedRef.current = true
+          setStripeLoaded(true)
+          initializeStripeElements()
+        }
+      }
+      document.head.appendChild(script)
+    }
 
     return () => {
-      if (script.parentNode) {
-        script.parentNode.removeChild(script)
+      // Cleanup Stripe Elements
+      if (cardElementInstanceRef.current) {
+        try {
+          cardElementInstanceRef.current.destroy()
+        } catch (e) {
+          console.log("Element already destroyed")
+        }
+        cardElementInstanceRef.current = null
       }
     }
   }, [])
 
-  const handleInputChange = (field: string, value: string) => {
-    let formattedValue = value
+  const initializeStripeElements = () => {
+    if (!window.Stripe || stripeRef.current) return
 
-    // Format card number with spaces
-    if (field === "cardNumber") {
-      formattedValue = value
-        .replace(/\s/g, "")
-        .replace(/(.{4})/g, "$1 ")
-        .trim()
-      if (formattedValue.length > 19) return // Max 16 digits + 3 spaces
+    try {
+      // Initialize Stripe
+      stripeRef.current = window.Stripe(STRIPE_PUBLISHABLE_KEY)
+
+      // Create Elements instance
+      elementsRef.current = stripeRef.current.elements({
+        appearance: {
+          theme: "stripe",
+          variables: {
+            colorPrimary: "#2563eb",
+            colorBackground: "#ffffff",
+            colorText: "#1f2937",
+            colorDanger: "#ef4444",
+            fontFamily: "system-ui, sans-serif",
+            spacingUnit: "4px",
+            borderRadius: "6px",
+          },
+        },
+      })
+
+      // Create card element with simplified styling
+      cardElementInstanceRef.current = elementsRef.current.create("card", {
+        style: {
+          base: {
+            fontSize: "16px",
+            color: "#1f2937",
+            fontFamily: "system-ui, -apple-system, sans-serif",
+            fontWeight: "400",
+            "::placeholder": {
+              color: "#9ca3af",
+            },
+          },
+          invalid: {
+            color: "#ef4444",
+            iconColor: "#ef4444",
+          },
+          complete: {
+            color: "#059669",
+            iconColor: "#059669",
+          },
+        },
+        hidePostalCode: true,
+      })
+
+      // Mount the card element
+      if (cardElementRef.current && cardElementInstanceRef.current) {
+        // Clear any existing content
+        cardElementRef.current.innerHTML = ""
+
+        cardElementInstanceRef.current.mount(cardElementRef.current)
+
+        // Listen for changes
+        cardElementInstanceRef.current.on("change", (event: any) => {
+          if (event.error) {
+            setError(event.error.message)
+          } else {
+            setError(null)
+          }
+        })
+
+        // Listen for ready event
+        cardElementInstanceRef.current.on("ready", () => {
+          setElementsReady(true)
+        })
+      }
+    } catch (err) {
+      console.error("Error initializing Stripe Elements:", err)
+      setError("Failed to initialize payment form. Please refresh and try again.")
     }
-
-    // Format expiry date as MM/YY
-    if (field === "expiryDate") {
-      formattedValue = value.replace(/\D/g, "").replace(/(\d{2})(\d)/, "$1/$2")
-      if (formattedValue.length > 5) return // Max MM/YY
-    }
-
-    // Format CVC (3-4 digits)
-    if (field === "cvc") {
-      formattedValue = value.replace(/\D/g, "")
-      if (formattedValue.length > 4) return
-    }
-
-    // Format phone number
-    if (field === "phoneNumber") {
-      formattedValue = value.replace(/\D/g, "")
-      if (formattedValue.length > 15) return
-    }
-
-    setFormData((prev) => ({
-      ...prev,
-      [field]: formattedValue,
-    }))
   }
 
-  const createStripeToken = async (cardData: any) => {
-    if (!window.Stripe || !stripeLoaded) {
-      throw new Error("Stripe is not loaded")
+  const handlePhoneNumberChange = (value: string) => {
+    const formattedValue = value.replace(/\D/g, "")
+    if (formattedValue.length <= 15) {
+      setPhoneNumber(formattedValue)
     }
-
-    const stripe = window.Stripe(STRIPE_PUBLISHABLE_KEY)
-
-    const { token, error } = await stripe.createToken("card", cardData)
-
-    if (error) {
-      throw new Error(error.message)
-    }
-
-    return token
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsProcessing(true)
     setError(null)
-    setSuccess(false)
 
     try {
-      // Validate form
-      if (!formData.cardNumber || !formData.expiryDate || !formData.cvc || !formData.phoneNumber) {
-        throw new Error("Please fill in all fields")
+      // Validate phone number
+      if (!phoneNumber || phoneNumber.length < 10) {
+        throw new Error("Please enter a valid phone number")
       }
 
-      const cardNumber = formData.cardNumber.replace(/\s/g, "")
-      if (cardNumber.length < 13 || cardNumber.length > 19) {
-        throw new Error("Please enter a valid card number")
+      if (!stripeRef.current || !cardElementInstanceRef.current) {
+        throw new Error("Stripe is not properly initialized")
       }
 
-      const [month, year] = formData.expiryDate.split("/")
-      if (!month || !year || month.length !== 2 || year.length !== 2) {
-        throw new Error("Please enter a valid expiry date (MM/YY)")
-      }
+      console.log("Step 1: Creating payment method with Stripe Elements...")
 
-      if (formData.cvc.length < 3 || formData.cvc.length > 4) {
-        throw new Error("Please enter a valid CVC")
-      }
-
-      if (!stripeLoaded) {
-        throw new Error("Stripe is still loading. Please try again.")
-      }
-
-      console.log("Step 1: Creating Stripe token...")
-
-      // Step 1: Tokenize card information using Stripe
-      const cardData = {
-        number: cardNumber,
-        exp_month: Number.parseInt(month),
-        exp_year: Number.parseInt(`20${year}`),
-        cvc: formData.cvc,
-      }
-
-      const token = await createStripeToken(cardData)
-      console.log("Token created:", token.id)
-
-      // Step 2: Create Stripe customer
-      console.log("Step 2: Creating Stripe customer...")
-
-      const customerData = new URLSearchParams({
-        name: `${userData.firstName} ${userData.lastName}`,
-        email: userData.email,
-        phone: formData.phoneNumber,
-        description: "Customer created via driver app",
-      })
-
-      const customerResponse = await fetch("https://api.stripe.com/v1/customers", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${STRIPE_PUBLISHABLE_KEY}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: customerData,
-      })
-
-      if (!customerResponse.ok) {
-        const errorText = await customerResponse.text()
-        console.error("Customer creation failed:", errorText)
-        throw new Error(`Failed to create customer: ${customerResponse.status}`)
-      }
-
-      const customerResult = await customerResponse.json()
-      const accountId = customerResult.id
-      console.log("Customer created with ID:", accountId)
-
-      // Step 3: Create payment method
-      console.log("Step 3: Creating payment method...")
-
-      const paymentMethodData = new URLSearchParams({
+      // Create payment method using Stripe Elements
+      const { paymentMethod, error: stripeError } = await stripeRef.current.createPaymentMethod({
         type: "card",
-        "card[token]": token.id,
-      })
-
-      const paymentMethodResponse = await fetch("https://api.stripe.com/v1/payment_methods", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${STRIPE_PUBLISHABLE_KEY}`,
-          "Content-Type": "application/x-www-form-urlencoded",
+        card: cardElementInstanceRef.current,
+        billing_details: {
+          name: `${userData.firstName} ${userData.lastName}`,
+          email: userData.email,
+          phone: phoneNumber,
         },
-        body: paymentMethodData,
       })
 
-      if (!paymentMethodResponse.ok) {
-        const errorText = await paymentMethodResponse.text()
-        console.error("Payment method creation failed:", errorText)
-        throw new Error(`Failed to create payment method: ${paymentMethodResponse.status}`)
+      if (stripeError) {
+        throw new Error(stripeError.message)
       }
 
-      const paymentMethodResult = await paymentMethodResponse.json()
-      const cardId = paymentMethodResult.id
-      console.log("Payment method created with ID:", cardId)
+      if (!paymentMethod) {
+        throw new Error("Failed to create payment method")
+      }
 
-      // Step 4: Send to backend
-      console.log("Step 4: Sending to backend...")
+      console.log("Payment method created:", paymentMethod.id)
+
+      // Step 2: Send payment method to backend
+      console.log("Step 2: Sending to backend...")
 
       const backendData = {
-        cardNumber: cardId,
+        cardNumber: paymentMethod.id, // This is the payment method ID
         cardholderName: `${userData.firstName} ${userData.lastName}`,
-        accountId: accountId,
+        accountId: paymentMethod.customer || "", // Will be empty initially
         userId: userData.id,
       }
 
@@ -237,7 +242,7 @@ export default function AddCardView({ userData, onBack }: AddCardViewProps) {
       if (!backendResponse.ok) {
         const errorText = await backendResponse.text()
         console.error("Backend request failed:", errorText)
-        throw new Error(`Backend request failed: ${backendResponse.status}`)
+        throw new Error(`Backend request failed: ${backendResponse.status} - ${errorText}`)
       }
 
       const backendResult = await backendResponse.json()
@@ -303,54 +308,41 @@ export default function AddCardView({ userData, onBack }: AddCardViewProps) {
               </Alert>
             )}
 
+            {stripeLoaded && !elementsReady && (
+              <Alert>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <AlertDescription>Initializing secure payment form...</AlertDescription>
+              </Alert>
+            )}
+
             <form onSubmit={handleSubmit} className="space-y-4">
+              {/* Stripe Card Element */}
               <div className="space-y-2">
-                <Label htmlFor="cardNumber">Card Number</Label>
-                <Input
-                  id="cardNumber"
-                  type="text"
-                  value={formData.cardNumber}
-                  onChange={(e) => handleInputChange("cardNumber", e.target.value)}
-                  placeholder="1234 5678 9012 3456"
-                  required
-                  disabled={!stripeLoaded}
+                <Label htmlFor="card-element">Card Information</Label>
+                <div
+                  ref={cardElementRef}
+                  className="p-4 border border-gray-300 rounded-md bg-white min-h-[50px] focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500"
+                  style={{
+                    opacity: stripeLoaded && elementsReady ? 1 : 0.5,
+                    pointerEvents: stripeLoaded && elementsReady ? "auto" : "none",
+                  }}
                 />
+                {!elementsReady && stripeLoaded && (
+                  <div className="flex items-center justify-center py-2">
+                    <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+                    <span className="ml-2 text-sm text-gray-500">Loading card form...</span>
+                  </div>
+                )}
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="expiryDate">Expiry Date</Label>
-                  <Input
-                    id="expiryDate"
-                    type="text"
-                    value={formData.expiryDate}
-                    onChange={(e) => handleInputChange("expiryDate", e.target.value)}
-                    placeholder="MM/YY"
-                    required
-                    disabled={!stripeLoaded}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="cvc">CVC</Label>
-                  <Input
-                    id="cvc"
-                    type="text"
-                    value={formData.cvc}
-                    onChange={(e) => handleInputChange("cvc", e.target.value)}
-                    placeholder="123"
-                    required
-                    disabled={!stripeLoaded}
-                  />
-                </div>
-              </div>
-
+              {/* Phone Number */}
               <div className="space-y-2">
                 <Label htmlFor="phoneNumber">Phone Number</Label>
                 <Input
                   id="phoneNumber"
                   type="tel"
-                  value={formData.phoneNumber}
-                  onChange={(e) => handleInputChange("phoneNumber", e.target.value)}
+                  value={phoneNumber}
+                  onChange={(e) => handlePhoneNumberChange(e.target.value)}
                   placeholder="1234567890"
                   required
                   disabled={!stripeLoaded}
@@ -359,7 +351,7 @@ export default function AddCardView({ userData, onBack }: AddCardViewProps) {
 
               <Button
                 type="submit"
-                disabled={isProcessing || !stripeLoaded}
+                disabled={isProcessing || !stripeLoaded || !elementsReady}
                 className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white font-semibold"
               >
                 {isProcessing ? (
@@ -372,15 +364,23 @@ export default function AddCardView({ userData, onBack }: AddCardViewProps) {
                     <Loader2 className="w-5 h-5 mr-2 animate-spin" />
                     Loading Stripe...
                   </>
+                ) : !elementsReady ? (
+                  <>
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    Initializing Form...
+                  </>
                 ) : (
                   "Add Card"
                 )}
               </Button>
             </form>
 
-            <div className="text-xs text-gray-500 text-center">
+            <div className="text-xs text-gray-500 text-center space-y-1">
               <p>🔒 Your card information is encrypted and secure</p>
-              <p>Powered by Stripe</p>
+              <p>Powered by Stripe Elements</p>
+              <p className="text-gray-400">
+                Card details are processed securely by Stripe and never stored on our servers
+              </p>
             </div>
           </CardContent>
         </Card>

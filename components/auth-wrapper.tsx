@@ -30,6 +30,71 @@ export default function AuthWrapper() {
     }
   }, [isAuthenticated, user?.email, userExists, checkingUser])
 
+  // Helper function to convert hex string to base64 image
+  const hexToBase64Image = (hexString: string): string => {
+    try {
+      console.log("Converting hex to base64. Hex length:", hexString.length)
+
+      // Ensure hex string has even length
+      if (hexString.length % 2 !== 0) {
+        console.error("Invalid hex string length:", hexString.length)
+        throw new Error("Invalid hex string length")
+      }
+
+      // Convert hex to bytes (RGB values)
+      const bytes = new Uint8Array(hexString.length / 2)
+      for (let i = 0; i < hexString.length; i += 2) {
+        bytes[i / 2] = Number.parseInt(hexString.substr(i, 2), 16)
+      }
+
+      console.log("Converted to", bytes.length, "bytes")
+
+      // Calculate image dimensions (assuming square image)
+      const totalPixels = bytes.length / 3 // 3 bytes per pixel (RGB)
+      const dimension = Math.sqrt(totalPixels)
+      const width = Math.floor(dimension)
+      const height = Math.floor(dimension)
+
+      console.log("Calculated dimensions:", width, "x", height)
+
+      // Create canvas and draw image
+      const canvas = document.createElement("canvas")
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext("2d")
+
+      if (!ctx) {
+        throw new Error("Could not get canvas context")
+      }
+
+      // Create ImageData from RGB bytes
+      const imageData = ctx.createImageData(width, height)
+      for (let i = 0; i < width * height; i++) {
+        const rgbIndex = i * 3
+        const pixelIndex = i * 4
+
+        if (rgbIndex + 2 < bytes.length) {
+          imageData.data[pixelIndex] = bytes[rgbIndex] // R
+          imageData.data[pixelIndex + 1] = bytes[rgbIndex + 1] // G
+          imageData.data[pixelIndex + 2] = bytes[rgbIndex + 2] // B
+          imageData.data[pixelIndex + 3] = 255 // A (fully opaque)
+        }
+      }
+
+      // Put image data on canvas
+      ctx.putImageData(imageData, 0, 0)
+
+      // Convert to base64 data URL
+      const base64DataUrl = canvas.toDataURL("image/jpeg", 0.8)
+      console.log("Successfully converted hex to base64 image")
+
+      return base64DataUrl
+    } catch (error) {
+      console.error("Error converting hex to base64:", error)
+      throw error
+    }
+  }
+
   const checkUserExists = async (email: string) => {
     setCheckingUser(true)
     try {
@@ -38,7 +103,67 @@ export default function AuthWrapper() {
       })
 
       if (response.status === 200) {
-        const userData = await response.json()
+        const backendUserData = await response.json()
+        console.log("Backend user data:", backendUserData)
+        console.log("Backend profilePicture field:", backendUserData.profilePicture)
+        console.log("Auth0 picture:", user?.picture)
+
+        // Determine which profile picture to use
+        let profilePicture = ""
+
+        if (
+          backendUserData.profilePicture &&
+          backendUserData.profilePicture.trim() !== "" &&
+          backendUserData.profilePicture !== "null" &&
+          backendUserData.profilePicture !== null
+        ) {
+          // Check if it's a base64 data URL (starts with data:image/)
+          if (backendUserData.profilePicture.startsWith("data:image/")) {
+            profilePicture = backendUserData.profilePicture
+          }
+          // Check if it's a hex string (only contains hex characters and is long enough)
+          else if (
+            /^[0-9a-fA-F]+$/.test(backendUserData.profilePicture) &&
+            backendUserData.profilePicture.length > 100
+          ) {
+            try {
+              profilePicture = hexToBase64Image(backendUserData.profilePicture)
+              console.log("Successfully converted hex profile picture to base64")
+            } catch (error) {
+              console.error("Failed to convert hex to image:", error)
+              profilePicture = user?.picture || ""
+            }
+          }
+          // Check if it's a regular URL
+          else if (backendUserData.profilePicture.startsWith("http")) {
+            profilePicture = backendUserData.profilePicture
+          }
+          // Otherwise use Auth0 picture
+          else {
+            console.log("Backend profile picture format not recognized, using Auth0 picture")
+            profilePicture = user?.picture || ""
+          }
+        } else {
+          // Use Auth0 picture as fallback
+          profilePicture = user?.picture || ""
+        }
+
+        console.log(
+          "Final profilePicture used:",
+          profilePicture ? "Set (length: " + profilePicture.length + ")" : "Empty",
+        )
+
+        const userData: User = {
+          id: backendUserData.id,
+          email: backendUserData.email,
+          profilePicture: profilePicture,
+          rating: backendUserData.rating || 5.0,
+          firstName: backendUserData.firstName,
+          lastName: backendUserData.lastName,
+          connectedAccount: backendUserData.connectedAccount || "",
+        }
+
+        console.log("Processed user data:", userData)
         setUserData(userData)
         setUserExists(true)
       } else if (response.status === 404) {
@@ -94,7 +219,7 @@ export default function AuthWrapper() {
     const defaultUserData: User = {
       id: 0, // Will be updated when real data loads
       email: user.email,
-      profilePicture: user.picture || "",
+      profilePicture: user.picture || "", // Use Auth0 picture as fallback
       rating: 5.0,
       firstName: user.given_name || "Driver",
       lastName: user.family_name || "User",
