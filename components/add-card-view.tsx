@@ -25,11 +25,15 @@ interface User {
 interface AddCardViewProps {
   userData: User
   onBack: () => void
+  onCardAdded?: (cardId: string) => void
 }
 
-// Your Stripe publishable key
+// Your Stripe keys
 const STRIPE_PUBLISHABLE_KEY =
   "pk_test_51RTPNgFawibChNbgqRpgSKarzJlRdDAuGsmxmy13gZFuhkj4UfMilv4Agx2yr3n5eg6pOnwK1xDjAhcJlpj5kSmq003sVhDP08"
+
+const STRIPE_SECRET_KEY =
+  "sk_test_51RTPNgFawibChNbgnxmPjWiWOZJXvNDlG0LtWoGQbHsRwK8LHGL4A6O3AJ8NfkCqr06qiD2bjTEbFXxbVVGewwS1005HwHJ4RS"
 
 // Declare Stripe global
 declare global {
@@ -38,7 +42,7 @@ declare global {
   }
 }
 
-export default function AddCardView({ userData, onBack }: AddCardViewProps) {
+export default function AddCardView({ userData, onBack, onCardAdded }: AddCardViewProps) {
   const { user } = useAuth0()
   const [phoneNumber, setPhoneNumber] = useState("")
   const [isProcessing, setIsProcessing] = useState(false)
@@ -46,6 +50,7 @@ export default function AddCardView({ userData, onBack }: AddCardViewProps) {
   const [success, setSuccess] = useState(false)
   const [stripeLoaded, setStripeLoaded] = useState(false)
   const [elementsReady, setElementsReady] = useState(false)
+  const [processingStep, setProcessingStep] = useState("")
 
   // Refs for Stripe Elements
   const cardElementRef = useRef<HTMLDivElement>(null)
@@ -109,7 +114,7 @@ export default function AddCardView({ userData, onBack }: AddCardViewProps) {
     if (!window.Stripe || stripeRef.current) return
 
     try {
-      // Initialize Stripe
+      // Initialize Stripe with publishable key
       stripeRef.current = window.Stripe(STRIPE_PUBLISHABLE_KEY)
 
       // Create Elements instance
@@ -186,10 +191,30 @@ export default function AddCardView({ userData, onBack }: AddCardViewProps) {
     }
   }
 
+  // Helper function to make Stripe API calls with secret key
+  const stripeApiCall = async (endpoint: string, data: any) => {
+    const response = await fetch(`https://api.stripe.com/v1/${endpoint}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${STRIPE_SECRET_KEY}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams(data),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error?.message || `HTTP ${response.status}: ${response.statusText}`)
+    }
+
+    return response.json()
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsProcessing(true)
     setError(null)
+    setProcessingStep("")
 
     try {
       // Validate phone number
@@ -201,9 +226,24 @@ export default function AddCardView({ userData, onBack }: AddCardViewProps) {
         throw new Error("Stripe is not properly initialized")
       }
 
-      console.log("Step 1: Creating payment method with Stripe Elements...")
+      setProcessingStep("Creating customer account...")
+      console.log("Step 1: Creating Stripe Customer...")
 
-      // Create payment method using Stripe Elements
+      // Step 1: Create Stripe Customer using direct API call
+      const customerData = {
+        email: userData.email,
+        name: `${userData.firstName} ${userData.lastName}`,
+        phone: phoneNumber,
+        description: "driver customer",
+      }
+
+      const customer = await stripeApiCall("customers", customerData)
+      console.log("Stripe Customer created:", customer.id)
+
+      setProcessingStep("Processing card information...")
+      console.log("Step 2: Creating payment method with Stripe Elements...")
+
+      // Step 2: Create payment method using Stripe Elements
       const { paymentMethod, error: stripeError } = await stripeRef.current.createPaymentMethod({
         type: "card",
         card: cardElementInstanceRef.current,
@@ -224,13 +264,24 @@ export default function AddCardView({ userData, onBack }: AddCardViewProps) {
 
       console.log("Payment method created:", paymentMethod.id)
 
-      // Step 2: Send payment method to backend
-      console.log("Step 2: Sending to backend...")
+      setProcessingStep("Linking card to account...")
+      console.log("Step 3: Attaching payment method to customer...")
 
+      // Step 3: Attach payment method to customer using direct API call
+      await stripeApiCall(`payment_methods/${paymentMethod.id}/attach`, {
+        customer: customer.id,
+      })
+
+      console.log("Payment method attached to customer")
+
+      setProcessingStep("Finalizing card setup...")
+      console.log("Step 4: Sending to backend...")
+
+      // Step 4: Send payment method to backend with customer ID (ONLY backend call)
       const backendData = {
         cardNumber: paymentMethod.id, // This is the payment method ID
         cardholderName: `${userData.firstName} ${userData.lastName}`,
-        accountId: paymentMethod.customer || "", // Will be empty initially
+        accountId: customer.id, // Use the Stripe Customer ID
         userId: userData.id,
       }
 
@@ -248,6 +299,11 @@ export default function AddCardView({ userData, onBack }: AddCardViewProps) {
       const backendResult = await backendResponse.json()
       console.log("Backend response:", backendResult)
 
+      // Extract card ID from backend response and notify parent
+      if (backendResult && backendResult.id && onCardAdded) {
+        onCardAdded(backendResult.id.toString())
+      }
+
       setSuccess(true)
       setTimeout(() => {
         onBack()
@@ -257,6 +313,7 @@ export default function AddCardView({ userData, onBack }: AddCardViewProps) {
       setError(error instanceof Error ? error.message : "An unexpected error occurred")
     } finally {
       setIsProcessing(false)
+      setProcessingStep("")
     }
   }
 
@@ -267,7 +324,7 @@ export default function AddCardView({ userData, onBack }: AddCardViewProps) {
           <CardContent className="p-8 text-center">
             <CheckCircle className="w-16 h-16 text-green-600 mx-auto mb-4" />
             <h2 className="text-2xl font-bold text-gray-900 mb-2">Card Added Successfully!</h2>
-            <p className="text-gray-600">Your debit card has been securely added to your account.</p>
+            <p className="text-gray-600">Your debit card has been securely added with customer account.</p>
           </CardContent>
         </Card>
       </div>
@@ -315,6 +372,13 @@ export default function AddCardView({ userData, onBack }: AddCardViewProps) {
               </Alert>
             )}
 
+            {processingStep && (
+              <Alert>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <AlertDescription>{processingStep}</AlertDescription>
+              </Alert>
+            )}
+
             <form onSubmit={handleSubmit} className="space-y-4">
               {/* Stripe Card Element */}
               <div className="space-y-2">
@@ -357,7 +421,7 @@ export default function AddCardView({ userData, onBack }: AddCardViewProps) {
                 {isProcessing ? (
                   <>
                     <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                    Processing Card...
+                    {processingStep || "Processing Card..."}
                   </>
                 ) : !stripeLoaded ? (
                   <>

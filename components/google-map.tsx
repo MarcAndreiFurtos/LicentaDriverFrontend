@@ -7,9 +7,7 @@ interface PickupLocation {
   lat: number
   lng: number
   address: string
-  customerName: string
-  items: string[]
-  earnings: number
+  value: number
 }
 
 interface GoogleMapProps {
@@ -17,6 +15,7 @@ interface GoogleMapProps {
   zoom: number
   pickupLocations: PickupLocation[]
   onLocationUpdate?: (location: { lat: number; lng: number }) => void
+  onStartPickup?: (pickup: PickupLocation) => void
 }
 
 declare global {
@@ -26,7 +25,7 @@ declare global {
   }
 }
 
-export default function GoogleMap({ center, zoom, pickupLocations, onLocationUpdate }: GoogleMapProps) {
+export default function GoogleMap({ center, zoom, pickupLocations, onLocationUpdate, onStartPickup }: GoogleMapProps) {
   const mapRef = useRef<HTMLDivElement>(null)
   const [map, setMap] = useState<any>(null)
   const [isLoaded, setIsLoaded] = useState(false)
@@ -37,6 +36,7 @@ export default function GoogleMap({ center, zoom, pickupLocations, onLocationUpd
   const currentLocationMarkerRef = useRef<any>(null)
   const accuracyCircleRef = useRef<any>(null)
   const lastUpdateTimeRef = useRef<number>(0)
+  const pickupMarkersRef = useRef<any[]>([])
 
   // Get user's current location
   useEffect(() => {
@@ -168,6 +168,13 @@ export default function GoogleMap({ center, zoom, pickupLocations, onLocationUpd
     }
   }, [isLoaded, currentLocation, mapInitialized, map])
 
+  // Update pickup markers when pickupLocations change
+  useEffect(() => {
+    if (map && window.google) {
+      updatePickupMarkers()
+    }
+  }, [pickupLocations, map, onStartPickup])
+
   const updateCurrentLocationMarker = (location: { lat: number; lng: number }) => {
     if (!map || !window.google) return
 
@@ -213,11 +220,96 @@ export default function GoogleMap({ center, zoom, pickupLocations, onLocationUpd
     })
   }
 
+  const updatePickupMarkers = () => {
+    if (!map || !window.google) return
+
+    console.log("Updating pickup markers. Count:", pickupLocations.length)
+
+    // Clear existing pickup markers
+    pickupMarkersRef.current.forEach((marker) => {
+      marker.setMap(null)
+    })
+    pickupMarkersRef.current = []
+
+    // Add new pickup location markers
+    pickupLocations.forEach((location) => {
+      console.log("Adding marker for pickup:", location.id, "at", location.lat, location.lng)
+
+      const marker = new window.google.maps.Marker({
+        position: { lat: location.lat, lng: location.lng },
+        map: map,
+        icon: {
+          url:
+            "data:image/svg+xml;charset=UTF-8," +
+            encodeURIComponent(`
+            <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="16" cy="16" r="14" fill="#10b981" stroke="#ffffff" strokeWidth="3"/>
+              <path d="M12 10h8l-2 4h2l-4 8-4-8h2l-2-4z" fill="#ffffff"/>
+            </svg>
+          `),
+          scaledSize: new window.google.maps.Size(32, 32),
+          anchor: new window.google.maps.Point(16, 16),
+        },
+        title: `Pickup ID: ${location.id} - Value: $${location.value}`,
+        optimized: true, // Enable marker optimization
+      })
+
+      // Add info window with Start Pickup button
+      const infoWindow = new window.google.maps.InfoWindow({
+        content: `
+    <div style="padding: 8px; min-width: 200px;">
+      <h3 style="margin: 0 0 8px 0; font-size: 16px; font-weight: bold;">Pickup #${location.id}</h3>
+      <p style="margin: 0 0 4px 0; font-size: 14px; color: #666;">${location.address}</p>
+      <p style="margin: 0 0 12px 0; font-size: 16px; font-weight: bold; color: #10b981;">Value: $${location.value}</p>
+      <button 
+        id="start-pickup-${location.id}" 
+        style="
+          background: #10b981; 
+          color: white; 
+          border: none; 
+          padding: 8px 16px; 
+          border-radius: 6px; 
+          font-size: 14px; 
+          font-weight: 600; 
+          cursor: pointer;
+          width: 100%;
+        "
+        onmouseover="this.style.background='#059669'" 
+        onmouseout="this.style.background='#10b981'"
+      >
+        Start Pickup
+      </button>
+    </div>
+  `,
+      })
+
+      marker.addListener("click", () => {
+        infoWindow.open(map, marker)
+
+        // Add click listener for the Start Pickup button after the info window opens
+        setTimeout(() => {
+          const startButton = document.getElementById(`start-pickup-${location.id}`)
+          if (startButton && onStartPickup) {
+            startButton.onclick = () => {
+              onStartPickup(location)
+              infoWindow.close()
+            }
+          }
+        }, 100)
+      })
+
+      // Store marker reference for cleanup
+      pickupMarkersRef.current.push(marker)
+    })
+
+    console.log("Added", pickupMarkersRef.current.length, "pickup markers to map")
+  }
+
   const initializeMap = () => {
     if (!mapRef.current || !window.google || map) return
 
-    // Use current location if available, otherwise use provided center or default
-    const mapCenter = currentLocation || center || { lat: 37.7749, lng: -122.4194 }
+    // Use current location if available, otherwise use provided center or default to Timisoara, Romania
+    const mapCenter = currentLocation || center || { lat: 45.7489, lng: 21.2087 } // Timisoara coordinates
 
     console.log("Initializing map with center:", mapCenter)
 
@@ -249,43 +341,7 @@ export default function GoogleMap({ center, zoom, pickupLocations, onLocationUpd
       updateCurrentLocationMarker(currentLocation)
     }
 
-    // Add pickup location markers with optimization
-    pickupLocations.forEach((location) => {
-      const marker = new window.google.maps.Marker({
-        position: { lat: location.lat, lng: location.lng },
-        map: mapInstance,
-        icon: {
-          url:
-            "data:image/svg+xml;charset=UTF-8," +
-            encodeURIComponent(`
-            <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="16" cy="16" r="14" fill="#10b981" stroke="#ffffff" strokeWidth="3"/>
-              <path d="M12 10h8l-2 4h2l-4 8-4-8h2l-2-4z" fill="#ffffff"/>
-            </svg>
-          `),
-          scaledSize: new window.google.maps.Size(32, 32),
-          anchor: new window.google.maps.Point(16, 16),
-        },
-        title: `${location.customerName} - $${location.earnings}`,
-        optimized: true, // Enable marker optimization
-      })
-
-      // Add info window
-      const infoWindow = new window.google.maps.InfoWindow({
-        content: `
-          <div style="padding: 8px; min-width: 200px;">
-            <h3 style="margin: 0 0 8px 0; font-size: 16px; font-weight: bold;">${location.customerName}</h3>
-            <p style="margin: 0 0 4px 0; font-size: 14px; color: #666;">${location.address}</p>
-            <p style="margin: 0 0 8px 0; font-size: 14px;"><strong>Items:</strong> ${location.items.join(", ")}</p>
-            <p style="margin: 0; font-size: 16px; font-weight: bold; color: #10b981;">$${location.earnings}</p>
-          </div>
-        `,
-      })
-
-      marker.addListener("click", () => {
-        infoWindow.open(mapInstance, marker)
-      })
-    })
+    console.log("Map initialized successfully")
   }
 
   // Function to center map on current location

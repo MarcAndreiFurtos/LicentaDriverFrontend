@@ -10,20 +10,23 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
   Menu,
   Navigation,
-  Star,
   Loader2,
   AlertCircle,
   ExternalLink,
   CreditCard,
   Plus,
-  Clock,
   LogOut,
+  MapPin,
+  Package,
 } from "lucide-react"
 import { useAuth0 } from "@auth0/auth0-react"
 import GoogleMap from "./components/google-map"
 import AddCardView from "./components/add-card-view"
 import ProfilePictureUpload from "./components/profile-picture-upload"
 import { apiCall } from "./lib/api-config"
+import type { google } from "googlemaps"
+import PickupInProgress from "./components/pickup-in-progress"
+import CardSelectionPopup from "./components/card-selection-popup"
 
 interface User {
   id: number
@@ -45,44 +48,33 @@ interface ConfirmationLinkDto {
   refreshUrl: string
 }
 
-const pickupLocations = [
-  {
-    id: "1",
-    lat: 37.7849,
-    lng: -122.4094,
-    address: "1234 Oak Street, San Francisco, CA",
-    customerName: "Sarah Johnson",
-    items: ["Plastic bottles", "Aluminum cans"],
-    earnings: 15.5,
-  },
-  {
-    id: "2",
-    lat: 37.7849,
-    lng: -122.4074,
-    address: "5678 Pine Avenue, San Francisco, CA",
-    customerName: "Mike Chen",
-    items: ["Cardboard boxes", "Glass bottles"],
-    earnings: 22.75,
-  },
-  {
-    id: "3",
-    lat: 37.7829,
-    lng: -122.4084,
-    address: "9012 Elm Drive, San Francisco, CA",
-    customerName: "Lisa Rodriguez",
-    items: ["Mixed recyclables"],
-    earnings: 18.25,
-  },
-  {
-    id: "4",
-    lat: 37.7869,
-    lng: -122.4104,
-    address: "3456 Maple Court, San Francisco, CA",
-    customerName: "David Kim",
-    items: ["Electronics", "Batteries"],
-    earnings: 35.0,
-  },
-]
+interface SgrPickupDto {
+  driverLocation: string
+  pickupLocation: string
+  sackSizeLiters: number
+  userId: number
+  driverId: number
+  cardId: number
+  value: number
+}
+
+interface PendingPickupDto {
+  id: number
+  driverLocation: string
+  pickupLocation: string
+  value: number
+  userId: number
+  driverId: number
+  cardId: number
+}
+
+interface PickupLocation {
+  id: string
+  lat: number
+  lng: number
+  address: string
+  value: number
+}
 
 export default function DriverHomescreen({ userData, isLoadingUserData = false }: DriverHomescreenProps) {
   const [isOnline, setIsOnline] = useState(true)
@@ -94,6 +86,17 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
   const [showAddCard, setShowAddCard] = useState(false)
   const [showProfileUpload, setShowProfileUpload] = useState(false)
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null)
+  const [pastDeliveries, setPastDeliveries] = useState<SgrPickupDto[]>([])
+  const [loadingDeliveries, setLoadingDeliveries] = useState(false)
+  const [deliveriesError, setDeliveriesError] = useState<string | null>(null)
+  const [pickupLocations, setPickupLocations] = useState<PickupLocation[]>([])
+  const [loadingPickups, setLoadingPickups] = useState(false)
+  const [pickupsError, setPickupsError] = useState<string | null>(null)
+  const [showPickupInProgress, setShowPickupInProgress] = useState(false)
+  const [activePickup, setActivePickup] = useState<PickupLocation | null>(null)
+  const [selectedCardId, setSelectedCardId] = useState<string>("")
+  const [showCardSelection, setShowCardSelection] = useState(false)
+  const [pendingPickup, setPendingPickup] = useState<PickupLocation | null>(null)
   const { logout, user } = useAuth0()
 
   // Update user data when it loads
@@ -102,8 +105,74 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
       setCurrentUserData(userData)
       // Fetch connected account info when we have a real user ID
       fetchConnectedAccount(userData.id)
+      // Fetch past deliveries
+      fetchPastDeliveries(userData.id)
     }
+    // Fetch pending pickups regardless of user data
+    fetchPendingPickups()
   }, [userData])
+
+  // Set up polling for pending pickups
+  useEffect(() => {
+    // Initial fetch
+    fetchPendingPickups()
+
+    // Set up polling every 30 seconds
+    const pollInterval = setInterval(() => {
+      fetchPendingPickups()
+    }, 30000) // 30 seconds
+
+    // Cleanup interval on unmount
+    return () => {
+      clearInterval(pollInterval)
+    }
+  }, [])
+
+  // Function to convert address to coordinates using Google Geocoding API
+  const getCoordinatesFromAddress = async (address: string): Promise<{ lat: number; lng: number }> => {
+    try {
+      // Check if Google Maps is loaded
+      if (!window.google || !window.google.maps) {
+        console.warn("Google Maps not loaded yet, using default coordinates")
+        return {
+          lat: 45.7489,
+          lng: 21.2087,
+        }
+      }
+
+      // Use Google Geocoding API
+      const geocoder = new window.google.maps.Geocoder()
+
+      return new Promise((resolve, reject) => {
+        geocoder.geocode(
+          { address: address },
+          (results: google.maps.GeocoderResult[] | null, status: google.maps.GeocoderStatus) => {
+            if (status === "OK" && results && results[0]) {
+              const location = results[0].geometry.location
+              resolve({
+                lat: location.lat(),
+                lng: location.lng(),
+              })
+            } else {
+              console.error("Geocoding failed for address:", address, "Status:", status)
+              // Return default Timisoara coordinates if geocoding fails
+              resolve({
+                lat: 45.7489,
+                lng: 21.2087,
+              })
+            }
+          },
+        )
+      })
+    } catch (error) {
+      console.error("Error geocoding address:", address, error)
+      // Return default Timisoara coordinates if geocoding fails
+      return {
+        lat: 45.7489,
+        lng: 21.2087,
+      }
+    }
+  }
 
   // Helper function to convert hex string to base64 image
   const hexToBase64Image = (hexString: string): string => {
@@ -236,6 +305,109 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
       setConnectedAccount("")
     } finally {
       setLoadingAccount(false)
+    }
+  }
+
+  const fetchPastDeliveries = async (userId: number) => {
+    if (userId === 0) return // Don't fetch for placeholder user
+
+    setLoadingDeliveries(true)
+    setDeliveriesError(null)
+    try {
+      console.log(`Fetching past deliveries for user ID: ${userId}`)
+      const response = await apiCall(`/api/sgrPickup/${userId}/historyDriver`, {
+        method: "GET",
+      })
+
+      if (response.ok) {
+        const deliveries = await response.json()
+        console.log("Fetched past deliveries:", deliveries)
+        setPastDeliveries(deliveries || [])
+      } else {
+        console.error("Failed to fetch past deliveries:", response.status)
+        const errorText = await response.text()
+        setDeliveriesError(`Failed to load delivery history: ${response.status}`)
+        setPastDeliveries([])
+      }
+    } catch (error) {
+      console.error("Error fetching past deliveries:", error)
+      setDeliveriesError("Unable to load delivery history. Please check your connection.")
+      setPastDeliveries([])
+    } finally {
+      setLoadingDeliveries(false)
+    }
+  }
+
+  const fetchPendingPickups = async () => {
+    // Don't show loading on subsequent polls to avoid UI flicker
+    const isInitialLoad = pickupLocations.length === 0
+    if (isInitialLoad) {
+      setLoadingPickups(true)
+    }
+    setPickupsError(null)
+
+    try {
+      console.log("Fetching pending pickups...")
+      const response = await apiCall("/api/sgrPickup/pending", {
+        method: "GET",
+      })
+
+      if (response.ok) {
+        const pendingPickups: PendingPickupDto[] = await response.json()
+        console.log("Fetched pending pickups:", pendingPickups)
+
+        if (pendingPickups.length === 0) {
+          console.log("No pending pickups found")
+          setPickupLocations([])
+          return
+        }
+
+        // Convert pending pickups to pickup locations with coordinates
+        const locationsWithCoords: PickupLocation[] = []
+
+        for (const pickup of pendingPickups) {
+          try {
+            console.log(`Getting coordinates for pickup ${pickup.id}: ${pickup.pickupLocation}`)
+            const coords = await getCoordinatesFromAddress(pickup.pickupLocation)
+            console.log(`Coordinates for pickup ${pickup.id}:`, coords)
+
+            locationsWithCoords.push({
+              id: pickup.id.toString(),
+              lat: coords.lat,
+              lng: coords.lng,
+              address: pickup.pickupLocation,
+              value: pickup.value,
+            })
+          } catch (error) {
+            console.error("Error getting coordinates for pickup:", pickup.id, error)
+            // Add with default coordinates if geocoding fails
+            locationsWithCoords.push({
+              id: pickup.id.toString(),
+              lat: 45.7489,
+              lng: 21.2087,
+              address: pickup.pickupLocation,
+              value: pickup.value,
+            })
+          }
+        }
+
+        console.log("Final pickup locations with coordinates:", locationsWithCoords)
+        setPickupLocations(locationsWithCoords)
+      } else {
+        console.error("Failed to fetch pending pickups:", response.status)
+        const errorText = await response.text()
+        console.error("Error response:", errorText)
+        setPickupsError(`Failed to load pending pickups: ${response.status}`)
+        setPickupLocations([])
+      }
+    } catch (error) {
+      console.error("Error fetching pending pickups:", error)
+      setPickupsError("Unable to load pending pickups. Please check your connection.")
+      setPickupLocations([])
+    } finally {
+      if (isInitialLoad) {
+        setLoadingPickups(false)
+      }
     }
   }
 
@@ -376,6 +548,161 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
     return "/placeholder.svg"
   }
 
+  const handleStartPickup = async (pickup: PickupLocation) => {
+    if (!currentLocation) {
+      setAccountError("Unable to get your current location. Please enable location services.")
+      return
+    }
+
+    if (currentUserData.id === 0) {
+      setAccountError("Please wait for your profile to load.")
+      return
+    }
+
+    // Store the pickup and show card selection popup
+    setPendingPickup(pickup)
+    setShowCardSelection(true)
+  }
+
+  const handleCardSelected = async (cardId: string) => {
+    setShowCardSelection(false)
+    setSelectedCardId(cardId)
+
+    // Validate all required data
+    if (!pendingPickup) {
+      setAccountError("No pickup selected.")
+      return
+    }
+
+    if (!currentLocation) {
+      setAccountError("Unable to get your current location. Please enable location services.")
+      return
+    }
+
+    if (!cardId || cardId === "") {
+      setAccountError("No card selected.")
+      return
+    }
+
+    if (currentUserData.id === 0) {
+      setAccountError("User data not loaded yet. Please wait.")
+      return
+    }
+
+    // Validate cardId is a valid number
+    const parsedCardId = Number.parseInt(cardId, 10)
+    if (isNaN(parsedCardId) || parsedCardId <= 0) {
+      setAccountError(`Invalid card ID: ${cardId}`)
+      return
+    }
+
+    try {
+      const startPickupData = {
+        driverLocation: `${currentLocation.lat},${currentLocation.lng}`,
+        pickupLocation: pendingPickup.address,
+        userId: currentUserData.id,
+        driverId: currentUserData.id,
+        cardId: parsedCardId, // Use the card's ID as the cardId
+      }
+
+      console.log("=== PICKUP START DEBUG INFO ===")
+      console.log("Pickup ID:", pendingPickup.id)
+      console.log("Pickup Address:", pendingPickup.address)
+      console.log("Driver Location:", `${currentLocation.lat},${currentLocation.lng}`)
+      console.log("User ID:", currentUserData.id)
+      console.log("Card ID (original string):", cardId)
+      console.log("Card ID (parsed integer):", parsedCardId)
+      console.log("Full request data:", JSON.stringify(startPickupData, null, 2))
+      console.log("API endpoint:", `/api/sgrPickup/${pendingPickup.id}/progress`)
+      console.log("=== END DEBUG INFO ===")
+
+      const response = await apiCall(`/api/sgrPickup/${pendingPickup.id}/progress`, {
+        method: "PUT",
+        body: JSON.stringify(startPickupData),
+      })
+
+      if (response.ok) {
+        console.log("✅ Pickup started successfully")
+        setActivePickup(pendingPickup)
+        setShowPickupInProgress(true)
+        setPendingPickup(null)
+      } else {
+        let errorDetails = ""
+        try {
+          const contentType = response.headers.get("content-type")
+          if (contentType && contentType.includes("application/json")) {
+            const errorJson = await response.json()
+            errorDetails = JSON.stringify(errorJson, null, 2)
+          } else {
+            errorDetails = await response.text()
+          }
+        } catch (parseError) {
+          errorDetails = `Unable to parse error response: ${parseError}`
+        }
+
+        console.error("❌ Failed to start pickup")
+        console.error("Response status:", response.status)
+        console.error("Error details:", errorDetails)
+        setAccountError(`Failed to start pickup (${response.status}): ${errorDetails}`)
+      }
+    } catch (error) {
+      console.error("❌ Network error starting pickup:", error)
+      setAccountError(error instanceof Error ? error.message : "Network error occurred")
+    }
+  }
+
+  const handleCardSelectionClose = () => {
+    setShowCardSelection(false)
+    setPendingPickup(null)
+  }
+
+  const handlePickupComplete = () => {
+    setShowPickupInProgress(false)
+    setActivePickup(null)
+    setSelectedCardId("")
+    // Refresh pending pickups
+    fetchPendingPickups()
+  }
+
+  // Show Card Selection Popup
+  if (showCardSelection && currentUserData.id !== 0) {
+    return (
+      <>
+        {/* Render the main screen in the background */}
+        <div className="relative h-screen w-full bg-gray-100 overflow-hidden">
+          <div className="absolute inset-0">
+            <GoogleMap
+              zoom={15}
+              pickupLocations={pickupLocations}
+              onLocationUpdate={handleLocationUpdate}
+              onStartPickup={handleStartPickup}
+            />
+          </div>
+          {/* Other UI elements would be here but simplified for the popup */}
+        </div>
+
+        {/* Card Selection Popup */}
+        <CardSelectionPopup
+          userId={currentUserData.id}
+          onCardSelected={handleCardSelected}
+          onClose={handleCardSelectionClose}
+        />
+      </>
+    )
+  }
+
+  // Show Pickup In Progress view if requested
+  if (showPickupInProgress && activePickup) {
+    return (
+      <PickupInProgress
+        userData={currentUserData}
+        pickup={activePickup}
+        cardId={selectedCardId}
+        onBack={handlePickupComplete}
+      />
+    )
+  }
+
   // Show Profile Upload view if requested
   if (showProfileUpload) {
     return (
@@ -396,7 +723,12 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
     <div className="relative h-screen w-full bg-gray-100 overflow-hidden">
       {/* Google Maps Background */}
       <div className="absolute inset-0">
-        <GoogleMap zoom={15} pickupLocations={pickupLocations} onLocationUpdate={handleLocationUpdate} />
+        <GoogleMap
+          zoom={15}
+          pickupLocations={pickupLocations}
+          onLocationUpdate={handleLocationUpdate}
+          onStartPickup={handleStartPickup}
+        />
       </div>
 
       {/* Top Bar */}
@@ -427,10 +759,6 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
                     {currentUserData.firstName} {currentUserData.lastName}
                     {isLoadingUserData && <Loader2 className="w-3 h-3 ml-1 inline animate-spin" />}
                   </h3>
-                  <div className="flex items-center gap-1">
-                    <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                    <span className="text-sm text-gray-600">{currentUserData.rating}</span>
-                  </div>
                   <p className="text-xs text-gray-500">
                     ID: {currentUserData.id === 0 ? "Loading..." : currentUserData.id}
                   </p>
@@ -442,12 +770,61 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
                 </div>
               </div>
 
-              <div className="flex-1 py-4">
-                <div className="space-y-2">
-                  <Button variant="ghost" className="w-full justify-start gap-3">
-                    <Clock className="w-5 h-5" />
-                    Trip History
-                  </Button>
+              {/* Past Deliveries Section */}
+              <div className="flex-1 py-4 overflow-y-auto">
+                <div className="px-4 mb-3">
+                  <h4 className="font-semibold text-gray-900 mb-2">Past Deliveries</h4>
+
+                  {loadingDeliveries && (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+                      <span className="ml-2 text-sm text-gray-500">Loading deliveries...</span>
+                    </div>
+                  )}
+
+                  {deliveriesError && (
+                    <Alert variant="destructive" className="mb-4">
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertDescription className="text-sm">{deliveriesError}</AlertDescription>
+                    </Alert>
+                  )}
+
+                  {!loadingDeliveries && !deliveriesError && pastDeliveries.length === 0 && (
+                    <div className="text-center py-8">
+                      <Package className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                      <p className="text-sm text-gray-500">You have not made any pickups yet</p>
+                    </div>
+                  )}
+
+                  {!loadingDeliveries && pastDeliveries.length > 0 && (
+                    <div className="space-y-3">
+                      {pastDeliveries.map((delivery, index) => (
+                        <Card key={index} className="bg-white border border-gray-200">
+                          <CardContent className="p-3">
+                            <div className="space-y-2">
+                              <div className="flex items-start gap-2">
+                                <MapPin className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs text-gray-600 mb-1">Pickup Location</p>
+                                  <p className="text-sm font-medium text-gray-900 break-words">
+                                    {delivery.pickupLocation}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                <Package className="w-4 h-4 text-green-600 flex-shrink-0" />
+                                <div>
+                                  <p className="text-xs text-gray-600">Value</p>
+                                  <p className="text-sm font-medium text-gray-900">${delivery.value || "0.00"}</p>
+                                </div>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -470,6 +847,11 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
             {isOnline ? "ONLINE" : "OFFLINE"}
           </Badge>
           {isLoadingUserData && <Loader2 className="w-4 h-4 animate-spin text-gray-500" />}
+          {pickupLocations.length > 0 && (
+            <Badge variant="outline" className="text-xs">
+              {pickupLocations.length} pickup{pickupLocations.length !== 1 ? "s" : ""}
+            </Badge>
+          )}
         </div>
       </div>
 
@@ -507,6 +889,21 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription className="text-sm">{accountError}</AlertDescription>
+            </Alert>
+          )}
+
+          {/* Pending Pickups Loading/Error */}
+          {loadingPickups && (
+            <Alert>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <AlertDescription className="text-sm">Loading pending pickups...</AlertDescription>
+            </Alert>
+          )}
+
+          {pickupsError && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription className="text-sm">{pickupsError}</AlertDescription>
             </Alert>
           )}
 

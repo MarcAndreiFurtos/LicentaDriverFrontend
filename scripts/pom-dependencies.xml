@@ -1,0 +1,6 @@
+<!-- Add this Stripe dependency to your pom.xml -->
+<dependency>
+    <groupId>com.stripe</groupId>
+    <artifactId>stripe-java</artifactId>
+    <version>24.16.0</version>
+</dependency>
