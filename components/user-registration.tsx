@@ -75,10 +75,7 @@ export default function UserRegistration({ email, onRegistrationComplete }: User
   }
 
   const handleAcceptCertificate = () => {
-    window.open(
-      "https://licentabackend-f2dpe8f5fjh8bff4.germanywestcentral-01.azurewebsites.net:8080/api/users",
-      "_blank",
-    )
+    window.open("https://licentabackend-f2dpe8f5fjh8bff4.germanywestcentral-01.azurewebsites.net/api/users", "_blank")
   }
 
   if (showConnectionTest) {

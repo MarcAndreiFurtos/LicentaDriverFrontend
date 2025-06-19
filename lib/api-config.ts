@@ -1,11 +1,11 @@
 export const API_CONFIG = {
   development: {
-    baseUrl: "https://licentabackend-f2dpe8f5fjh8bff4.germanywestcentral-01.azurewebsites.net:8080",
+    baseUrl: "https://licentabackend-f2dpe8f5fjh8bff4.germanywestcentral-01.azurewebsites.net",
     timeout: 10000,
     selfSignedCert: false,
   },
   production: {
-    baseUrl: "https://licentabackend-f2dpe8f5fjh8bff4.germanywestcentral-01.azurewebsites.net:8080",
+    baseUrl: "https://licentabackend-f2dpe8f5fjh8bff4.germanywestcentral-01.azurewebsites.net",
     timeout: 10000,
     selfSignedCert: false,
   },

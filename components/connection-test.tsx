@@ -29,10 +29,7 @@ export default function ConnectionTest() {
   }
 
   const openBackendUrl = () => {
-    window.open(
-      "https://licentabackend-f2dpe8f5fjh8bff4.germanywestcentral-01.azurewebsites.net:8080/api/users",
-      "_blank",
-    )
+    window.open("https://licentabackend-f2dpe8f5fjh8bff4.germanywestcentral-01.azurewebsites.net/api/users", "_blank")
   }
 
   return (
@@ -80,7 +77,7 @@ export default function ConnectionTest() {
         <div className="text-xs text-gray-500 space-y-1">
           <p>
             <strong>Backend URL:</strong>{" "}
-            https://licentabackend-f2dpe8f5fjh8bff4.germanywestcentral-01.azurewebsites.net:8080
+            https://licentabackend-f2dpe8f5fjh8bff4.germanywestcentral-01.azurewebsites.net
           </p>
           <p>
             <strong>Expected:</strong> Spring Boot server with CORS enabled
