@@ -57,7 +57,7 @@ export default function UserRegistration({ email, onRegistrationComplete }: User
       console.error("Registration error:", error)
 
       if (error instanceof TypeError && error.message.includes("fetch")) {
-        setError("Unable to connect to the backend server. This might be due to SSL certificate or CORS issues.")
+        setError("Unable to connect to the backend server. Please check your internet connection.")
         setShowConnectionTest(true)
       } else {
         setError("An unexpected error occurred. Please try again.")
@@ -74,8 +74,8 @@ export default function UserRegistration({ email, onRegistrationComplete }: User
     }))
   }
 
-  const handleAcceptCertificate = () => {
-    window.open("https://20.33.110.63:8443/api/users", "_blank")
+  const handleTestBackend = () => {
+    window.open("https://licenta-backend.westeurope.cloudapp.azure.com:8443/api/users", "_blank")
   }
 
   if (showConnectionTest) {
@@ -113,9 +113,9 @@ export default function UserRegistration({ email, onRegistrationComplete }: User
               <AlertDescription className="space-y-2">
                 <p>{error}</p>
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={handleAcceptCertificate}>
+                  <Button variant="outline" size="sm" onClick={handleTestBackend}>
                     <ExternalLink className="w-4 h-4 mr-2" />
-                    Accept Certificate
+                    Test Backend
                   </Button>
                   <Button variant="outline" size="sm" onClick={() => setShowConnectionTest(true)}>
                     <Settings className="w-4 h-4 mr-2" />

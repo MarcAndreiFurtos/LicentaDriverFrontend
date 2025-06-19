@@ -1,13 +1,13 @@
 export const API_CONFIG = {
   development: {
-    baseUrl: "https://20.33.110.63:8443",
+    baseUrl: "https://licenta-backend.westeurope.cloudapp.azure.com:8443",
     timeout: 10000,
-    selfSignedCert: true,
+    selfSignedCert: false,
   },
   production: {
-    baseUrl: "https://20.33.110.63:8443",
+    baseUrl: "https://licenta-backend.westeurope.cloudapp.azure.com:8443",
     timeout: 10000,
-    selfSignedCert: true,
+    selfSignedCert: false,
   },
 }
 
@@ -49,21 +49,7 @@ export const apiCall = async (endpoint: string, options: RequestInit = {}) => {
     console.log(`API response status: ${response.status}`)
     return response
   } catch (error) {
-    if (config.selfSignedCert && error instanceof TypeError) {
-      console.error(
-        `
-        SSL Certificate Error: The backend is using a self-signed certificate.
-        
-        To fix this:
-        1. Visit https://20.33.110.63:8443/api/users in your browser to accept the certificate
-        2. Or add CORS configuration to your Spring Boot application
-        
-        Original error:`,
-        error,
-      )
-    } else {
-      console.error(`API call failed for ${endpoint}:`, error)
-    }
+    console.error(`API call failed for ${endpoint}:`, error)
     throw error
   }
 }
