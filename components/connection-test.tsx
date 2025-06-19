@@ -29,7 +29,7 @@ export default function ConnectionTest() {
   }
 
   const openBackendUrl = () => {
-    window.open("https://licentabackend-f2dpe8f5fjh8bff4.germanywestcentral-01.azurewebsites.net/api/users", "_blank")
+    window.open("https://20.33.110.63:8443/api/users", "_blank")
   }
 
   return (
@@ -65,9 +65,11 @@ export default function ConnectionTest() {
                   <p className="text-sm">{result.error}</p>
                   <Button variant="outline" size="sm" onClick={openBackendUrl} className="w-full">
                     <ExternalLink className="w-4 h-4 mr-2" />
-                    Test Backend Connection
+                    Accept SSL Certificate
                   </Button>
-                  <p className="text-xs text-gray-600">Click above to test the backend connection.</p>
+                  <p className="text-xs text-gray-600">
+                    Click above to accept the self-signed certificate, then test again.
+                  </p>
                 </div>
               )}
             </AlertDescription>
@@ -76,8 +78,7 @@ export default function ConnectionTest() {
 
         <div className="text-xs text-gray-500 space-y-1">
           <p>
-            <strong>Backend URL:</strong>{" "}
-            https://licentabackend-f2dpe8f5fjh8bff4.germanywestcentral-01.azurewebsites.net
+            <strong>Backend URL:</strong> https://20.33.110.63:8443
           </p>
           <p>
             <strong>Expected:</strong> Spring Boot server with CORS enabled
