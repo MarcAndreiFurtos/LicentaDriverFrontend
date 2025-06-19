@@ -47,6 +47,7 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
   const mapRef = useRef<HTMLDivElement>(null)
   const [map, setMap] = useState<any>(null)
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null)
+  const [currentAddress, setCurrentAddress] = useState<string>("")
   const [eta, setEta] = useState<EtaResponse | null>(null)
   const [isCompleting, setIsCompleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -81,7 +82,19 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
   // Start location update polling when we have current location
   useEffect(() => {
     if (currentLocation) {
-      startLocationUpdatePolling()
+      // Convert coordinates to address and start polling
+      convertCoordinatesToAddress(currentLocation.lat, currentLocation.lng)
+        .then((address) => {
+          setCurrentAddress(address)
+          startLocationUpdatePolling(address)
+        })
+        .catch((error) => {
+          console.error("Failed to get address for current location:", error)
+          // Use coordinates as fallback
+          const fallbackAddress = `${currentLocation.lat.toFixed(6)}, ${currentLocation.lng.toFixed(6)}`
+          setCurrentAddress(fallbackAddress)
+          startLocationUpdatePolling(fallbackAddress)
+        })
     }
   }, [currentLocation])
 
@@ -91,6 +104,43 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
       updateDriverMarker()
     }
   }, [map, currentLocation])
+
+  /**
+   * Convert latitude/longitude coordinates to a human-readable address
+   */
+  const convertCoordinatesToAddress = async (lat: number, lng: number): Promise<string> => {
+    try {
+      // Check if Google Maps is loaded
+      if (!window.google || !window.google.maps) {
+        console.warn("Google Maps not loaded yet, using coordinates as address")
+        return `${lat.toFixed(6)}, ${lng.toFixed(6)}`
+      }
+
+      // Use Google Geocoding API
+      const geocoder = new window.google.maps.Geocoder()
+
+      return new Promise((resolve, reject) => {
+        geocoder.geocode(
+          { location: { lat, lng } },
+          (results: google.maps.GeocoderResult[] | null, status: google.maps.GeocoderStatus) => {
+            if (status === "OK" && results && results[0]) {
+              const address = results[0].formatted_address
+              console.log(`Converted coordinates (${lat}, ${lng}) to address: ${address}`)
+              resolve(address)
+            } else {
+              console.error("Reverse geocoding failed for coordinates:", lat, lng, "Status:", status)
+              // Return coordinates as fallback
+              resolve(`${lat.toFixed(6)}, ${lng.toFixed(6)}`)
+            }
+          },
+        )
+      })
+    } catch (error) {
+      console.error("Error in reverse geocoding:", error)
+      // Return coordinates as fallback
+      return `${lat.toFixed(6)}, ${lng.toFixed(6)}`
+    }
+  }
 
   const initializeMap = async () => {
     // Load Google Maps if not already loaded
@@ -167,13 +217,22 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
       maximumAge: 5000,
     }
 
-    const handleSuccess = (position: GeolocationPosition) => {
+    const handleSuccess = async (position: GeolocationPosition) => {
       const location = {
         lat: position.coords.latitude,
         lng: position.coords.longitude,
       }
       setCurrentLocation(location)
       setLocationError(null)
+
+      // Convert new location to address
+      try {
+        const address = await convertCoordinatesToAddress(location.lat, location.lng)
+        setCurrentAddress(address)
+      } catch (error) {
+        console.error("Failed to convert location to address:", error)
+        setCurrentAddress(`${location.lat.toFixed(6)}, ${location.lng.toFixed(6)}`)
+      }
     }
 
     const handleError = (error: GeolocationPositionError) => {
@@ -213,12 +272,15 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
       zIndex: 1000,
     })
 
-    // Add info window for driver
+    // Add info window for driver with address
     const driverInfoWindow = new window.google.maps.InfoWindow({
       content: `
         <div style="padding: 8px;">
           <h3 style="margin: 0 0 4px 0; font-size: 14px; font-weight: bold;">Your Location</h3>
-          <p style="margin: 0; font-size: 12px; color: #666;">
+          <p style="margin: 0 0 4px 0; font-size: 12px; color: #666;">
+            ${currentAddress || "Getting address..."}
+          </p>
+          <p style="margin: 0; font-size: 10px; color: #999;">
             ${currentLocation.lat.toFixed(4)}, ${currentLocation.lng.toFixed(4)}
           </p>
         </div>
@@ -286,20 +348,20 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
     etaPollIntervalRef.current = setInterval(pollEta, 30000)
   }
 
-  const startLocationUpdatePolling = () => {
+  const startLocationUpdatePolling = (driverAddress: string) => {
     const updateDriverLocation = async () => {
-      if (!currentLocation) return
+      if (!currentLocation || !driverAddress) return
 
       try {
         const locationUpdateData = {
-          driverLocation: `${currentLocation.lat},${currentLocation.lng}`,
+          driverLocation: driverAddress, // Send address instead of coordinates
           pickupLocation: pickup.address,
           userId: userData.id,
           driverId: userData.id,
           cardId: Number.parseInt(cardId, 10),
         }
 
-        console.log("Updating driver location:", locationUpdateData)
+        console.log("Updating driver location with address:", locationUpdateData)
 
         const response = await apiCall(`/api/sgrPickup/${pickup.id}/dLocation`, {
           method: "PUT",
@@ -310,10 +372,17 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
           console.log("Driver location updated successfully")
         } else {
           console.error("Failed to update driver location:", response.status)
+          const errorText = await response.text()
+          console.error("Error details:", errorText)
         }
       } catch (error) {
         console.error("Error updating driver location:", error)
       }
+    }
+
+    // Clear any existing interval
+    if (locationUpdateIntervalRef.current) {
+      clearInterval(locationUpdateIntervalRef.current)
     }
 
     // Update location immediately and then every 10 seconds
@@ -322,7 +391,7 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
   }
 
   const handleCompletePickup = async () => {
-    if (!currentLocation) {
+    if (!currentLocation || !currentAddress) {
       setError("Unable to get your current location")
       return
     }
@@ -332,12 +401,14 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
 
     try {
       const completeData = {
-        driverLocation: `${currentLocation.lat},${currentLocation.lng}`,
+        driverLocation: currentAddress, // Send address instead of coordinates
         pickupLocation: pickup.address,
         userId: userData.id,
         driverId: userData.id,
         cardId: Number.parseInt(cardId, 10),
       }
+
+      console.log("Completing pickup with address:", completeData)
 
       const response = await apiCall(`/api/sgrPickup/${pickup.id}/complete`, {
         method: "PUT",
@@ -463,7 +534,7 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
           {/* Complete Pickup Button */}
           <Button
             onClick={handleCompletePickup}
-            disabled={isCompleting || !currentLocation}
+            disabled={isCompleting || !currentLocation || !currentAddress}
             className="w-full h-12 bg-green-600 hover:bg-green-700 text-white font-semibold"
           >
             {isCompleting ? (
@@ -478,8 +549,12 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
 
           {/* Current Location Display */}
           {currentLocation && (
-            <div className="text-center text-xs text-gray-500">
-              📍 Your location: {currentLocation.lat.toFixed(4)}, {currentLocation.lng.toFixed(4)}
+            <div className="text-center text-xs text-gray-500 space-y-1">
+              <p className="font-medium">📍 Your current location:</p>
+              <p className="break-words">{currentAddress || "Getting address..."}</p>
+              <p className="text-gray-400">
+                {currentLocation.lat.toFixed(4)}, {currentLocation.lng.toFixed(4)}
+              </p>
             </div>
           )}
         </div>
