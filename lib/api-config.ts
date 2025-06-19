@@ -1,9 +1,7 @@
 export const API_CONFIG = {
   development: {
-    // Keep HTTPS since your Spring Boot server is configured for it
     baseUrl: "https://localhost:8443",
     timeout: 10000,
-    // Flag to indicate if we're dealing with self-signed certificates
     selfSignedCert: true,
   },
   production: {
@@ -18,7 +16,6 @@ export const getApiConfig = () => {
   return API_CONFIG[env as keyof typeof API_CONFIG] || API_CONFIG.development
 }
 
-// Helper function for making API calls with consistent configuration
 export const apiCall = async (endpoint: string, options: RequestInit = {}) => {
   const config = getApiConfig()
   const url = `${config.baseUrl}${endpoint}`
@@ -72,13 +69,11 @@ export const apiCall = async (endpoint: string, options: RequestInit = {}) => {
   }
 }
 
-// Test function to check if backend is accessible
 export const testBackendConnection = async () => {
   try {
     const config = getApiConfig()
-    // Try to hit a simple endpoint to test connectivity
     const response = await fetch(`${config.baseUrl}/api/users`, {
-      method: "OPTIONS", // Use OPTIONS to test CORS
+      method: "OPTIONS",
       mode: "cors",
     })
     return { success: true, status: response.status }

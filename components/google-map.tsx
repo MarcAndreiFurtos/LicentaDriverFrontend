@@ -38,7 +38,6 @@ export default function GoogleMap({ center, zoom, pickupLocations, onLocationUpd
   const lastUpdateTimeRef = useRef<number>(0)
   const pickupMarkersRef = useRef<any[]>([])
 
-  // Get user's current location
   useEffect(() => {
     if (!navigator.geolocation) {
       setLocationError("Geolocation is not supported by this browser")
@@ -48,7 +47,7 @@ export default function GoogleMap({ center, zoom, pickupLocations, onLocationUpd
     const options = {
       enableHighAccuracy: true,
       timeout: 10000,
-      maximumAge: 30000, // Reduced from 60000 to 30000 for more frequent updates
+      maximumAge: 30000,
     }
 
     const handleSuccess = (position: GeolocationPosition) => {
@@ -59,10 +58,8 @@ export default function GoogleMap({ center, zoom, pickupLocations, onLocationUpd
 
       console.log("Current location:", location)
 
-      // Throttle location updates to prevent lag
       const now = Date.now()
       if (now - lastUpdateTimeRef.current < 2000) {
-        // Only update every 2 seconds
         return
       }
       lastUpdateTimeRef.current = now
@@ -70,16 +67,12 @@ export default function GoogleMap({ center, zoom, pickupLocations, onLocationUpd
       setCurrentLocation(location)
       setLocationError(null)
 
-      // Notify parent component of location update
       onLocationUpdate?.(location)
 
-      // Initialize map with user location if not already initialized
       if (!mapInitialized && !map) {
-        // Map will be initialized with this location
         return
       }
 
-      // Update marker without affecting map center
       if (map && window.google) {
         updateCurrentLocationMarker(location)
       }
@@ -103,19 +96,16 @@ export default function GoogleMap({ center, zoom, pickupLocations, onLocationUpd
 
       setLocationError(errorMessage)
 
-      // Initialize map with default location if geolocation fails
       if (!mapInitialized) {
         setMapInitialized(true)
       }
     }
 
-    // Get initial location
     navigator.geolocation.getCurrentPosition(handleSuccess, handleError, options)
 
-    // Watch for location changes with reduced frequency
     const id = navigator.geolocation.watchPosition(handleSuccess, handleError, {
       ...options,
-      maximumAge: 10000, // Cache for 10 seconds to reduce updates
+      maximumAge: 10000,
     })
     setWatchId(id)
 
@@ -127,19 +117,16 @@ export default function GoogleMap({ center, zoom, pickupLocations, onLocationUpd
   }, [map, onLocationUpdate, mapInitialized])
 
   useEffect(() => {
-    // Check if Google Maps is already loaded
     if (window.google && window.google.maps) {
       initializeMap()
       return
     }
 
-    // Load Google Maps API
     const script = document.createElement("script")
     script.src = `https://maps.googleapis.com/maps/api/js?key=AIzaSyC1IXPN2zqdY6iCUxpwopAYH1m3VTKFqdE&libraries=places&callback=initMap`
     script.async = true
     script.defer = true
 
-    // Define the callback function globally
     window.initMap = () => {
       setIsLoaded(true)
       initializeMap()
@@ -148,27 +135,22 @@ export default function GoogleMap({ center, zoom, pickupLocations, onLocationUpd
     document.head.appendChild(script)
 
     return () => {
-      // Cleanup
       if (script.parentNode) {
         script.parentNode.removeChild(script)
       }
-      // Clean up global callback
       delete window.initMap
-      // Clear location watch
       if (watchId) {
         navigator.geolocation.clearWatch(watchId)
       }
     }
   }, [])
 
-  // Initialize map when we have location or after timeout
   useEffect(() => {
     if (isLoaded && !map && (currentLocation || mapInitialized)) {
       initializeMap()
     }
   }, [isLoaded, currentLocation, mapInitialized, map])
 
-  // Update pickup markers when pickupLocations change
   useEffect(() => {
     if (map && window.google) {
       updatePickupMarkers()
@@ -178,9 +160,7 @@ export default function GoogleMap({ center, zoom, pickupLocations, onLocationUpd
   const updateCurrentLocationMarker = (location: { lat: number; lng: number }) => {
     if (!map || !window.google) return
 
-    // Use requestAnimationFrame to smooth updates and prevent lag
     requestAnimationFrame(() => {
-      // Remove existing marker and circle
       if (currentLocationMarkerRef.current) {
         currentLocationMarkerRef.current.setMap(null)
       }
@@ -188,7 +168,6 @@ export default function GoogleMap({ center, zoom, pickupLocations, onLocationUpd
         accuracyCircleRef.current.setMap(null)
       }
 
-      // Create new current location marker with optimized settings
       currentLocationMarkerRef.current = new window.google.maps.Marker({
         position: location,
         map: map,
@@ -202,10 +181,9 @@ export default function GoogleMap({ center, zoom, pickupLocations, onLocationUpd
         },
         title: "Your Current Location",
         zIndex: 1000,
-        optimized: true, // Enable marker optimization
+        optimized: true,
       })
 
-      // Create accuracy circle with reduced visual impact
       accuracyCircleRef.current = new window.google.maps.Circle({
         strokeColor: "#4285F4",
         strokeOpacity: 0.4,
@@ -215,7 +193,7 @@ export default function GoogleMap({ center, zoom, pickupLocations, onLocationUpd
         map: map,
         center: location,
         radius: 25,
-        clickable: false, // Make circle non-interactive to improve performance
+        clickable: false,
       })
     })
   }
@@ -225,13 +203,11 @@ export default function GoogleMap({ center, zoom, pickupLocations, onLocationUpd
 
     console.log("Updating pickup markers. Count:", pickupLocations.length)
 
-    // Clear existing pickup markers
     pickupMarkersRef.current.forEach((marker) => {
       marker.setMap(null)
     })
     pickupMarkersRef.current = []
 
-    // Add new pickup location markers
     pickupLocations.forEach((location) => {
       console.log("Adding marker for pickup:", location.id, "at", location.lat, location.lng)
 
@@ -251,10 +227,9 @@ export default function GoogleMap({ center, zoom, pickupLocations, onLocationUpd
           anchor: new window.google.maps.Point(16, 16),
         },
         title: `Pickup ID: ${location.id} - Value: $${location.value}`,
-        optimized: true, // Enable marker optimization
+        optimized: true,
       })
 
-      // Add info window with Start Pickup button
       const infoWindow = new window.google.maps.InfoWindow({
         content: `
     <div style="padding: 8px; min-width: 200px;">
@@ -286,7 +261,6 @@ export default function GoogleMap({ center, zoom, pickupLocations, onLocationUpd
       marker.addListener("click", () => {
         infoWindow.open(map, marker)
 
-        // Add click listener for the Start Pickup button after the info window opens
         setTimeout(() => {
           const startButton = document.getElementById(`start-pickup-${location.id}`)
           if (startButton && onStartPickup) {
@@ -298,7 +272,6 @@ export default function GoogleMap({ center, zoom, pickupLocations, onLocationUpd
         }, 100)
       })
 
-      // Store marker reference for cleanup
       pickupMarkersRef.current.push(marker)
     })
 
@@ -308,8 +281,7 @@ export default function GoogleMap({ center, zoom, pickupLocations, onLocationUpd
   const initializeMap = () => {
     if (!mapRef.current || !window.google || map) return
 
-    // Use current location if available, otherwise use provided center or default to Timisoara, Romania
-    const mapCenter = currentLocation || center || { lat: 45.7489, lng: 21.2087 } // Timisoara coordinates
+    const mapCenter = currentLocation || center || { lat: 45.7489, lng: 21.2087 }
 
     console.log("Initializing map with center:", mapCenter)
 
@@ -330,13 +302,12 @@ export default function GoogleMap({ center, zoom, pickupLocations, onLocationUpd
       streetViewControl: false,
       rotateControl: false,
       fullscreenControl: false,
-      gestureHandling: "greedy", // Improve touch/scroll performance
+      gestureHandling: "greedy",
     })
 
     setMap(mapInstance)
     setMapInitialized(true)
 
-    // Add current location marker if we have the location
     if (currentLocation) {
       updateCurrentLocationMarker(currentLocation)
     }
@@ -344,13 +315,11 @@ export default function GoogleMap({ center, zoom, pickupLocations, onLocationUpd
     console.log("Map initialized successfully")
   }
 
-  // Function to center map on current location
   const centerOnCurrentLocation = () => {
     if (currentLocation && map) {
-      map.panTo(currentLocation) // Use panTo instead of setCenter for smoother animation
+      map.panTo(currentLocation)
       map.setZoom(16)
     } else {
-      // Try to get location again
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           (position) => {
@@ -373,7 +342,6 @@ export default function GoogleMap({ center, zoom, pickupLocations, onLocationUpd
     }
   }
 
-  // Expose center function to parent
   useEffect(() => {
     if (window) {
       ;(window as any).centerOnCurrentLocation = centerOnCurrentLocation
@@ -384,7 +352,6 @@ export default function GoogleMap({ center, zoom, pickupLocations, onLocationUpd
     <div className="relative w-full h-full">
       <div ref={mapRef} className="w-full h-full" style={{ minHeight: "100%" }} />
 
-      {/* Location status indicator */}
       {locationError && (
         <div className="absolute top-4 left-4 bg-red-100 border border-red-400 text-red-700 px-3 py-2 rounded-md text-sm max-w-xs">
           <p className="font-medium">Location Error</p>

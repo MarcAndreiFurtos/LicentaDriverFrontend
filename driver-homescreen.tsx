@@ -24,7 +24,6 @@ import GoogleMap from "./components/google-map"
 import AddCardView from "./components/add-card-view"
 import ProfilePictureUpload from "./components/profile-picture-upload"
 import { apiCall } from "./lib/api-config"
-// @ts-ignore
 import type { google } from "googlemaps"
 import PickupInProgress from "./components/pickup-in-progress"
 import CardSelectionPopup from "./components/card-selection-popup"
@@ -100,39 +99,29 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
   const [pendingPickup, setPendingPickup] = useState<PickupLocation | null>(null)
   const { logout, user } = useAuth0()
 
-  // Update user data when it loads
   useEffect(() => {
     if (userData.id !== 0) {
       setCurrentUserData(userData)
-      // Fetch connected account info when we have a real user ID
       fetchConnectedAccount(userData.id)
-      // Fetch past deliveries
       fetchPastDeliveries(userData.id)
     }
-    // Fetch pending pickups regardless of user data
     fetchPendingPickups()
   }, [userData])
 
-  // Set up polling for pending pickups
   useEffect(() => {
-    // Initial fetch
     fetchPendingPickups()
 
-    // Set up polling every 30 seconds
     const pollInterval = setInterval(() => {
       fetchPendingPickups()
-    }, 30000) // 30 seconds
+    }, 30000)
 
-    // Cleanup interval on unmount
     return () => {
       clearInterval(pollInterval)
     }
   }, [])
 
-  // Function to convert address to coordinates using Google Geocoding API
   const getCoordinatesFromAddress = async (address: string): Promise<{ lat: number; lng: number }> => {
     try {
-      // Check if Google Maps is loaded
       if (!window.google || !window.google.maps) {
         console.warn("Google Maps not loaded yet, using default coordinates")
         return {
@@ -141,7 +130,6 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
         }
       }
 
-      // Use Google Geocoding API
       const geocoder = new window.google.maps.Geocoder()
 
       return new Promise((resolve, reject) => {
@@ -156,7 +144,6 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
               })
             } else {
               console.error("Geocoding failed for address:", address, "Status:", status)
-              // Return default Timisoara coordinates if geocoding fails
               resolve({
                 lat: 45.7489,
                 lng: 21.2087,
@@ -167,7 +154,6 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
       })
     } catch (error) {
       console.error("Error geocoding address:", address, error)
-      // Return default Timisoara coordinates if geocoding fails
       return {
         lat: 45.7489,
         lng: 21.2087,
@@ -175,18 +161,15 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
     }
   }
 
-  // Helper function to convert hex string to base64 image
   const hexToBase64Image = (hexString: string): string => {
     try {
       console.log("Converting hex to base64. Hex length:", hexString.length)
 
-      // Ensure hex string has even length
       if (hexString.length % 2 !== 0) {
         console.error("Invalid hex string length:", hexString.length)
         throw new Error("Invalid hex string length")
       }
 
-      // Convert hex to bytes (RGB values)
       const bytes = new Uint8Array(hexString.length / 2)
       for (let i = 0; i < hexString.length; i += 2) {
         bytes[i / 2] = Number.parseInt(hexString.substr(i, 2), 16)
@@ -194,15 +177,13 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
 
       console.log("Converted to", bytes.length, "bytes")
 
-      // Calculate image dimensions (assuming square image)
-      const totalPixels = bytes.length / 3 // 3 bytes per pixel (RGB)
+      const totalPixels = bytes.length / 3
       const dimension = Math.sqrt(totalPixels)
       const width = Math.floor(dimension)
       const height = Math.floor(dimension)
 
       console.log("Calculated dimensions:", width, "x", height)
 
-      // Create canvas and draw image
       const canvas = document.createElement("canvas")
       canvas.width = width
       canvas.height = height
@@ -212,24 +193,21 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
         throw new Error("Could not get canvas context")
       }
 
-      // Create ImageData from RGB bytes
       const imageData = ctx.createImageData(width, height)
       for (let i = 0; i < width * height; i++) {
         const rgbIndex = i * 3
         const pixelIndex = i * 4
 
         if (rgbIndex + 2 < bytes.length) {
-          imageData.data[pixelIndex] = bytes[rgbIndex] // R
-          imageData.data[pixelIndex + 1] = bytes[rgbIndex + 1] // G
-          imageData.data[pixelIndex + 2] = bytes[rgbIndex + 2] // B
-          imageData.data[pixelIndex + 3] = 255 // A (fully opaque)
+          imageData.data[pixelIndex] = bytes[rgbIndex]
+          imageData.data[pixelIndex + 1] = bytes[rgbIndex + 1]
+          imageData.data[pixelIndex + 2] = bytes[rgbIndex + 2]
+          imageData.data[pixelIndex + 3] = 255
         }
       }
 
-      // Put image data on canvas
       ctx.putImageData(imageData, 0, 0)
 
-      // Convert to base64 data URL
       const base64DataUrl = canvas.toDataURL("image/jpeg", 0.8)
       console.log("Successfully converted hex to base64 image")
 
@@ -241,7 +219,7 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
   }
 
   const fetchConnectedAccount = async (userId: number) => {
-    if (userId === 0) return // Don't fetch for placeholder user
+    if (userId === 0) return
 
     setLoadingAccount(true)
     try {
@@ -254,10 +232,8 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
         console.log("Fetched user data for connected account:", backendUserData)
         console.log("Backend profilePicture in fetchConnectedAccount:", backendUserData.profilePicture)
 
-        // Update the connected account
         setConnectedAccount(backendUserData.connectedAccount || "")
 
-        // Update the profile picture if it has changed and is valid
         if (
           backendUserData.profilePicture &&
           backendUserData.profilePicture.trim() !== "" &&
@@ -266,12 +242,9 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
         ) {
           let newProfilePicture = ""
 
-          // Check if it's a base64 data URL
           if (backendUserData.profilePicture.startsWith("data:image/")) {
             newProfilePicture = backendUserData.profilePicture
-          }
-          // Check if it's a hex string
-          else if (
+          } else if (
             /^[0-9a-fA-F]+$/.test(backendUserData.profilePicture) &&
             backendUserData.profilePicture.length > 100
           ) {
@@ -279,11 +252,9 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
               newProfilePicture = hexToBase64Image(backendUserData.profilePicture)
             } catch (error) {
               console.error("Failed to convert hex to image:", error)
-              newProfilePicture = currentUserData.profilePicture // Keep current
+              newProfilePicture = currentUserData.profilePicture
             }
-          }
-          // Check if it's a regular URL
-          else if (backendUserData.profilePicture.startsWith("http")) {
+          } else if (backendUserData.profilePicture.startsWith("http")) {
             newProfilePicture = backendUserData.profilePicture
           }
 
@@ -310,7 +281,7 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
   }
 
   const fetchPastDeliveries = async (userId: number) => {
-    if (userId === 0) return // Don't fetch for placeholder user
+    if (userId === 0) return
 
     setLoadingDeliveries(true)
     setDeliveriesError(null)
@@ -340,7 +311,6 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
   }
 
   const fetchPendingPickups = async () => {
-    // Don't show loading on subsequent polls to avoid UI flicker
     const isInitialLoad = pickupLocations.length === 0
     if (isInitialLoad) {
       setLoadingPickups(true)
@@ -363,7 +333,6 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
           return
         }
 
-        // Convert pending pickups to pickup locations with coordinates
         const locationsWithCoords: PickupLocation[] = []
 
         for (const pickup of pendingPickups) {
@@ -381,7 +350,6 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
             })
           } catch (error) {
             console.error("Error getting coordinates for pickup:", pickup.id, error)
-            // Add with default coordinates if geocoding fails
             locationsWithCoords.push({
               id: pickup.id.toString(),
               lat: 45.7489,
@@ -421,7 +389,6 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
   }
 
   const handleCreateConnectedAccount = async () => {
-    // If we don't have a real user ID yet, show error
     if (currentUserData.id === 0) {
       setAccountError("Please wait for your profile to load before creating a connected account.")
       return
@@ -433,8 +400,6 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
     try {
       console.log(`Creating connected account for user ID: ${currentUserData.id}`)
 
-      // Step 1: Create connected account (POST request with no body)
-      // This returns a string (account number), not JSON
       const createAccountResponse = await apiCall(`/api/stripe/${currentUserData.id}`, {
         method: "POST",
       })
@@ -443,11 +408,9 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
         throw new Error(`Failed to create account: ${createAccountResponse.status} ${createAccountResponse.statusText}`)
       }
 
-      // Get the account number as a string
       const accountNumber = await createAccountResponse.text()
       console.log("Account created successfully. Account number:", accountNumber)
 
-      // Step 2: Get confirmation link (PUT request with ConfirmationLinkDto)
       const confirmationLinkDto: ConfirmationLinkDto = {
         returnUrl: "https://connect.stripe.com/hosted/setup/c/complete",
         refreshUrl: "https://connect.stripe.com/hosted/setup/c/complete",
@@ -464,17 +427,14 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
         )
       }
 
-      // Get the redirect link as a string
       const redirectUrl = await confirmationResponse.text()
       console.log("Confirmation link received:", redirectUrl)
 
-      // Step 3: Open the confirmation link in a new tab
       if (redirectUrl && redirectUrl.trim()) {
         const cleanUrl = redirectUrl.trim()
         console.log("Opening in new tab:", cleanUrl)
         window.open(cleanUrl, "_blank", "noopener,noreferrer")
 
-        // Refresh the connected account info after a short delay
         setTimeout(() => {
           fetchConnectedAccount(currentUserData.id)
         }, 2000)
@@ -500,7 +460,6 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
   }
 
   const handleProfilePictureSuccess = (newProfilePicture: string) => {
-    // Update the current user data with the new profile picture
     setCurrentUserData((prev) => ({
       ...prev,
       profilePicture: newProfilePicture,
@@ -513,7 +472,6 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
   }
 
   const handleCenterLocation = () => {
-    // Call the global function exposed by GoogleMap
     if ((window as any).centerOnCurrentLocation) {
       ;(window as any).centerOnCurrentLocation()
     }
@@ -527,7 +485,6 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
     )
     console.log("user?.picture:", user?.picture)
 
-    // Use backend profile picture if it exists and is not empty
     if (
       currentUserData.profilePicture &&
       currentUserData.profilePicture.trim() !== "" &&
@@ -538,13 +495,11 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
       return currentUserData.profilePicture
     }
 
-    // Fall back to Auth0 picture if available
     if (user?.picture) {
       console.log("Using Auth0 profile picture:", user.picture)
       return user.picture
     }
 
-    // Use placeholder as last resort
     console.log("Using placeholder profile picture")
     return "/placeholder.svg"
   }
@@ -560,7 +515,6 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
       return
     }
 
-    // Store the pickup and show card selection popup
     setPendingPickup(pickup)
     setShowCardSelection(true)
   }
@@ -569,7 +523,6 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
     setShowCardSelection(false)
     setSelectedCardId(cardId)
 
-    // Validate all required data
     if (!pendingPickup) {
       setAccountError("No pickup selected.")
       return
@@ -590,7 +543,6 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
       return
     }
 
-    // Validate cardId is a valid number
     const parsedCardId = Number.parseInt(cardId, 10)
     if (isNaN(parsedCardId) || parsedCardId <= 0) {
       setAccountError(`Invalid card ID: ${cardId}`)
@@ -603,7 +555,7 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
         pickupLocation: pendingPickup.address,
         userId: currentUserData.id,
         driverId: currentUserData.id,
-        cardId: parsedCardId, // Use the card's ID as the cardId
+        cardId: parsedCardId,
       }
 
       console.log("=== PICKUP START DEBUG INFO ===")
@@ -661,15 +613,12 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
     setShowPickupInProgress(false)
     setActivePickup(null)
     setSelectedCardId("")
-    // Refresh pending pickups
     fetchPendingPickups()
   }
 
-  // Show Card Selection Popup
   if (showCardSelection && currentUserData.id !== 0) {
     return (
       <>
-        {/* Render the main screen in the background */}
         <div className="relative h-screen w-full bg-gray-100 overflow-hidden">
           <div className="absolute inset-0">
             <GoogleMap
@@ -679,10 +628,8 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
               onStartPickup={handleStartPickup}
             />
           </div>
-          {/* Other UI elements would be here but simplified for the popup */}
         </div>
 
-        {/* Card Selection Popup */}
         <CardSelectionPopup
           userId={currentUserData.id}
           onCardSelected={handleCardSelected}
@@ -692,7 +639,6 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
     )
   }
 
-  // Show Pickup In Progress view if requested
   if (showPickupInProgress && activePickup) {
     return (
       <PickupInProgress
@@ -704,7 +650,6 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
     )
   }
 
-  // Show Profile Upload view if requested
   if (showProfileUpload) {
     return (
       <ProfilePictureUpload
@@ -715,14 +660,12 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
     )
   }
 
-  // Show Add Card view if requested
   if (showAddCard) {
     return <AddCardView userData={currentUserData} onBack={() => setShowAddCard(false)} />
   }
 
   return (
     <div className="relative h-screen w-full bg-gray-100 overflow-hidden">
-      {/* Google Maps Background */}
       <div className="absolute inset-0">
         <GoogleMap
           zoom={15}
@@ -732,7 +675,6 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
         />
       </div>
 
-      {/* Top Bar */}
       <div className="relative z-10 flex items-center justify-between p-4 bg-white/95 backdrop-blur-sm">
         <Sheet>
           <SheetTrigger asChild>
@@ -771,7 +713,6 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
                 </div>
               </div>
 
-              {/* Past Deliveries Section */}
               <div className="flex-1 py-4 overflow-y-auto">
                 <div className="px-4 mb-3">
                   <h4 className="font-semibold text-gray-900 mb-2">Past Deliveries</h4>
@@ -856,10 +797,8 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
         </div>
       </div>
 
-      {/* Centered Control Panel */}
       <div className="relative z-10 flex justify-center mt-4">
         <div className="w-full max-w-md px-4 space-y-3">
-          {/* Connected Account Card */}
           <Card>
             <CardContent className="p-3">
               <div className="flex items-center gap-3">
@@ -885,7 +824,6 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
             </CardContent>
           </Card>
 
-          {/* Error Alert */}
           {accountError && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
@@ -893,7 +831,6 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
             </Alert>
           )}
 
-          {/* Pending Pickups Loading/Error */}
           {loadingPickups && (
             <Alert>
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -908,7 +845,6 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
             </Alert>
           )}
 
-          {/* Create Connected Account Button */}
           <Button
             onClick={handleCreateConnectedAccount}
             disabled={isCreatingAccount || (currentUserData.id === 0 && isLoadingUserData)}
@@ -932,7 +868,6 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
             )}
           </Button>
 
-          {/* Add Debit Card Button */}
           <Button
             onClick={() => setShowAddCard(true)}
             disabled={currentUserData.id === 0 && isLoadingUserData}
@@ -953,7 +888,6 @@ export default function DriverHomescreen({ userData, isLoadingUserData = false }
         </div>
       </div>
 
-      {/* Center Location Button */}
       <div className="absolute bottom-6 right-4 z-10">
         <Button size="icon" className="rounded-full bg-white shadow-lg hover:bg-gray-50" onClick={handleCenterLocation}>
           <Navigation className="w-5 h-5" />

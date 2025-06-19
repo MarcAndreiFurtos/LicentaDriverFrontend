@@ -36,13 +36,11 @@ export default function ProfilePictureUpload({ userData, onBack, onSuccess }: Pr
     const file = event.target.files?.[0]
     if (!file) return
 
-    // Validate file type
     if (!file.type.startsWith("image/")) {
       setError("Please select a valid image file")
       return
     }
 
-    // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
       setError("Image size must be less than 5MB")
       return
@@ -50,7 +48,6 @@ export default function ProfilePictureUpload({ userData, onBack, onSuccess }: Pr
 
     setError(null)
 
-    // Create preview
     const reader = new FileReader()
     reader.onload = (e) => {
       setSelectedImage(e.target?.result as string)
@@ -67,7 +64,6 @@ export default function ProfilePictureUpload({ userData, onBack, onSuccess }: Pr
       img.crossOrigin = "anonymous"
       img.onload = () => {
         try {
-          // Resize image to reasonable size (max 200x200)
           const maxSize = 200
           let { width, height } = img
 
@@ -86,33 +82,27 @@ export default function ProfilePictureUpload({ userData, onBack, onSuccess }: Pr
           canvas.width = width
           canvas.height = height
 
-          // Draw image to canvas
           ctx?.drawImage(img, 0, 0, width, height)
 
-          // Get image data as RGB values
           const imageData = ctx?.getImageData(0, 0, width, height)
           if (!imageData) {
             reject(new Error("Failed to get image data"))
             return
           }
 
-          // Convert to RGB array (skip alpha channel)
           const rgbArray: number[] = []
           for (let i = 0; i < imageData.data.length; i += 4) {
-            rgbArray.push(imageData.data[i]) // R
-            rgbArray.push(imageData.data[i + 1]) // G
-            rgbArray.push(imageData.data[i + 2]) // B
-            // Skip alpha channel (i + 3)
+            rgbArray.push(imageData.data[i])
+            rgbArray.push(imageData.data[i + 1])
+            rgbArray.push(imageData.data[i + 2])
           }
 
-          // Convert RGB values to hex string
           let hexString = ""
           for (const value of rgbArray) {
             const hex = value.toString(16).padStart(2, "0")
             hexString += hex
           }
 
-          // Also create a base64 preview for immediate display
           const base64Preview = canvas.toDataURL("image/jpeg", 0.8)
 
           console.log("Image converted to hex. Length:", hexString.length)
@@ -152,7 +142,7 @@ export default function ProfilePictureUpload({ userData, onBack, onSuccess }: Pr
         method: "PUT",
         body: JSON.stringify({
           userId: userData.id,
-          incriptedImmage: hexString, // Send as hex string
+          incriptedImmage: hexString,
         }),
       })
 
@@ -165,7 +155,6 @@ export default function ProfilePictureUpload({ userData, onBack, onSuccess }: Pr
       console.log("Profile picture uploaded successfully")
       setSuccess(true)
 
-      // Call success callback with the base64 preview for immediate display
       onSuccess(base64Preview)
 
       setTimeout(() => {
@@ -200,7 +189,6 @@ export default function ProfilePictureUpload({ userData, onBack, onSuccess }: Pr
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 p-4">
       <div className="max-w-md mx-auto">
-        {/* Header */}
         <div className="flex items-center gap-3 mb-6 pt-4">
           <Button variant="ghost" size="icon" onClick={onBack} className="rounded-full">
             <ArrowLeft className="w-6 h-6" />
@@ -226,7 +214,6 @@ export default function ProfilePictureUpload({ userData, onBack, onSuccess }: Pr
               </Alert>
             )}
 
-            {/* Current/Selected Image Preview */}
             <div className="flex justify-center">
               <div className="w-32 h-32 rounded-full overflow-hidden bg-gray-200 border-4 border-gray-300">
                 <img
@@ -237,10 +224,8 @@ export default function ProfilePictureUpload({ userData, onBack, onSuccess }: Pr
               </div>
             </div>
 
-            {/* Hidden file input */}
             <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} className="hidden" />
 
-            {/* Upload button */}
             <Button
               onClick={triggerFileInput}
               disabled={isProcessing}
@@ -251,7 +236,6 @@ export default function ProfilePictureUpload({ userData, onBack, onSuccess }: Pr
               {selectedImage ? "Choose Different Image" : "Choose Image"}
             </Button>
 
-            {/* Upload/Save button */}
             {selectedImage && (
               <Button
                 onClick={handleUpload}

@@ -9,10 +9,8 @@ public class StripeController {
     @PostMapping("/customers")
     public ResponseEntity<?> createStripeCustomer(@RequestBody CustomerCreateRequest request) {
         try {
-            // Set the Stripe API key
             Stripe.apiKey = stripeSecretKey;
 
-            // Create customer parameters
             CustomerCreateParams params = CustomerCreateParams.builder()
                 .setEmail(request.getEmail())
                 .setName(request.getName())
@@ -20,10 +18,8 @@ public class StripeController {
                 .setDescription(request.getDescription())
                 .build();
 
-            // Create the customer
             Customer customer = Customer.create(params);
 
-            // Return the customer ID
             Map<String, String> response = new HashMap<>();
             response.put("id", customer.getId());
             response.put("customerId", customer.getId());
@@ -44,20 +40,16 @@ public class StripeController {
     @PostMapping("/payment-methods/attach")
     public ResponseEntity<?> attachPaymentMethod(@RequestBody AttachPaymentMethodRequest request) {
         try {
-            // Set the Stripe API key
             Stripe.apiKey = stripeSecretKey;
 
-            // Get the payment method
             PaymentMethod paymentMethod = PaymentMethod.retrieve(request.getPaymentMethodId());
 
-            // Attach to customer
             PaymentMethodAttachParams params = PaymentMethodAttachParams.builder()
                 .setCustomer(request.getCustomerId())
                 .build();
 
             paymentMethod.attach(params);
 
-            // Return success
             Map<String, String> response = new HashMap<>();
             response.put("status", "success");
             response.put("message", "Payment method attached successfully");
@@ -75,14 +67,12 @@ public class StripeController {
         }
     }
 
-    // DTO Classes
     public static class CustomerCreateRequest {
         private String email;
         private String name;
         private String phone;
         private String description;
 
-        // Getters and setters
         public String getEmail() { return email; }
         public void setEmail(String email) { this.email = email; }
         
@@ -100,7 +90,6 @@ public class StripeController {
         private String paymentMethodId;
         private String customerId;
 
-        // Getters and setters
         public String getPaymentMethodId() { return paymentMethodId; }
         public void setPaymentMethodId(String paymentMethodId) { this.paymentMethodId = paymentMethodId; }
         

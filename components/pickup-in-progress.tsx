@@ -59,14 +59,12 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
   const etaPollIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const locationUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
-  // Initialize map and start location tracking
   useEffect(() => {
     initializeMap()
     startLocationTracking()
     startEtaPolling()
 
     return () => {
-      // Cleanup
       if (watchIdRef.current) {
         navigator.geolocation.clearWatch(watchIdRef.current)
       }
@@ -79,10 +77,8 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
     }
   }, [])
 
-  // Start location update polling when we have current location
   useEffect(() => {
     if (currentLocation) {
-      // Convert coordinates to address and start polling
       convertCoordinatesToAddress(currentLocation.lat, currentLocation.lng)
         .then((address) => {
           setCurrentAddress(address)
@@ -90,7 +86,6 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
         })
         .catch((error) => {
           console.error("Failed to get address for current location:", error)
-          // Use coordinates as fallback
           const fallbackAddress = `${currentLocation.lat.toFixed(6)}, ${currentLocation.lng.toFixed(6)}`
           setCurrentAddress(fallbackAddress)
           startLocationUpdatePolling(fallbackAddress)
@@ -98,25 +93,19 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
     }
   }, [currentLocation])
 
-  // Update map when location changes
   useEffect(() => {
     if (map && currentLocation) {
       updateDriverMarker()
     }
   }, [map, currentLocation])
 
-  /**
-   * Convert latitude/longitude coordinates to a human-readable address
-   */
   const convertCoordinatesToAddress = async (lat: number, lng: number): Promise<string> => {
     try {
-      // Check if Google Maps is loaded
       if (!window.google || !window.google.maps) {
         console.warn("Google Maps not loaded yet, using coordinates as address")
         return `${lat.toFixed(6)}, ${lng.toFixed(6)}`
       }
 
-      // Use Google Geocoding API
       const geocoder = new window.google.maps.Geocoder()
 
       return new Promise((resolve, reject) => {
@@ -129,7 +118,6 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
               resolve(address)
             } else {
               console.error("Reverse geocoding failed for coordinates:", lat, lng, "Status:", status)
-              // Return coordinates as fallback
               resolve(`${lat.toFixed(6)}, ${lng.toFixed(6)}`)
             }
           },
@@ -137,13 +125,11 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
       })
     } catch (error) {
       console.error("Error in reverse geocoding:", error)
-      // Return coordinates as fallback
       return `${lat.toFixed(6)}, ${lng.toFixed(6)}`
     }
   }
 
   const initializeMap = async () => {
-    // Load Google Maps if not already loaded
     if (!window.google) {
       const script = document.createElement("script")
       script.src = `https://maps.googleapis.com/maps/api/js?key=AIzaSyC1IXPN2zqdY6iCUxpwopAYH1m3VTKFqdE&libraries=places`
@@ -157,7 +143,6 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
 
     if (!mapRef.current || !window.google) return
 
-    // Initialize map centered between pickup and current location
     const mapCenter = { lat: pickup.lat, lng: pickup.lng }
 
     const mapInstance = new window.google.maps.Map(mapRef.current, {
@@ -170,7 +155,6 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
 
     setMap(mapInstance)
 
-    // Add pickup location marker
     pickupMarkerRef.current = new window.google.maps.Marker({
       position: { lat: pickup.lat, lng: pickup.lng },
       map: mapInstance,
@@ -189,7 +173,6 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
       title: `Pickup Location - $${pickup.value}`,
     })
 
-    // Add info window for pickup
     const pickupInfoWindow = new window.google.maps.InfoWindow({
       content: `
         <div style="padding: 8px;">
@@ -225,7 +208,6 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
       setCurrentLocation(location)
       setLocationError(null)
 
-      // Convert new location to address
       try {
         const address = await convertCoordinatesToAddress(location.lat, location.lng)
         setCurrentAddress(address)
@@ -240,10 +222,8 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
       setLocationError("Unable to get your location")
     }
 
-    // Get initial location
     navigator.geolocation.getCurrentPosition(handleSuccess, handleError, options)
 
-    // Watch for location changes
     const watchId = navigator.geolocation.watchPosition(handleSuccess, handleError, options)
     watchIdRef.current = watchId
   }
@@ -251,12 +231,10 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
   const updateDriverMarker = () => {
     if (!map || !currentLocation || !window.google) return
 
-    // Remove existing driver marker
     if (driverMarkerRef.current) {
       driverMarkerRef.current.setMap(null)
     }
 
-    // Create new driver marker
     driverMarkerRef.current = new window.google.maps.Marker({
       position: currentLocation,
       map: map,
@@ -272,7 +250,6 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
       zIndex: 1000,
     })
 
-    // Add info window for driver with address
     const driverInfoWindow = new window.google.maps.InfoWindow({
       content: `
         <div style="padding: 8px;">
@@ -291,7 +268,6 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
       driverInfoWindow.open(map, driverMarkerRef.current)
     })
 
-    // Adjust map bounds to show both markers
     if (pickupMarkerRef.current) {
       const bounds = new window.google.maps.LatLngBounds()
       bounds.extend(currentLocation)
@@ -313,12 +289,10 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
           console.log("Raw ETA response:", etaText)
 
           try {
-            // Try to parse as JSON
             const etaData: EtaResponse = JSON.parse(etaText)
             console.log("Parsed ETA data:", etaData)
             setEta(etaData)
           } catch (parseError) {
-            // If it's not JSON, treat as plain text
             console.log("ETA response is plain text:", etaText)
             setEta({
               estimatedTime: etaText || "Calculating...",
@@ -343,7 +317,6 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
       }
     }
 
-    // Poll immediately and then every 30 seconds
     pollEta()
     etaPollIntervalRef.current = setInterval(pollEta, 30000)
   }
@@ -354,7 +327,7 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
 
       try {
         const locationUpdateData = {
-          driverLocation: driverAddress, // Send address instead of coordinates
+          driverLocation: driverAddress,
           pickupLocation: pickup.address,
           userId: userData.id,
           driverId: userData.id,
@@ -380,12 +353,10 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
       }
     }
 
-    // Clear any existing interval
     if (locationUpdateIntervalRef.current) {
       clearInterval(locationUpdateIntervalRef.current)
     }
 
-    // Update location immediately and then every 10 seconds
     updateDriverLocation()
     locationUpdateIntervalRef.current = setInterval(updateDriverLocation, 10000)
   }
@@ -401,7 +372,7 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
 
     try {
       const completeData = {
-        driverLocation: currentAddress, // Send address instead of coordinates
+        driverLocation: currentAddress,
         pickupLocation: pickup.address,
         userId: userData.id,
         driverId: userData.id,
@@ -417,7 +388,7 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
 
       if (response.ok) {
         console.log("Pickup completed successfully")
-        onBack() // Navigate back to home screen
+        onBack()
       } else {
         const errorText = await response.text()
         throw new Error(`Failed to complete pickup: ${response.status} - ${errorText}`)
@@ -441,12 +412,10 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
 
   return (
     <div className="relative h-screen w-full bg-gray-100 overflow-hidden">
-      {/* Google Maps */}
       <div className="absolute inset-0">
         <div ref={mapRef} className="w-full h-full" />
       </div>
 
-      {/* Top Bar */}
       <div className="relative z-10 flex items-center justify-between p-4 bg-white/95 backdrop-blur-sm">
         <Button variant="ghost" size="icon" onClick={onBack} className="rounded-full">
           <ArrowLeft className="w-6 h-6" />
@@ -457,7 +426,6 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
         </Button>
       </div>
 
-      {/* Location Error */}
       {locationError && (
         <div className="absolute top-20 left-4 right-4 z-10">
           <Alert variant="destructive">
@@ -467,7 +435,6 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
         </div>
       )}
 
-      {/* Error Alert */}
       {error && (
         <div className="absolute top-20 left-4 right-4 z-10">
           <Alert variant="destructive">
@@ -477,7 +444,6 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
         </div>
       )}
 
-      {/* ETA Display Card */}
       <div className="absolute top-24 left-4 right-4 z-10">
         <Card className="bg-white/95 backdrop-blur-sm">
           <CardContent className="p-4">
@@ -514,10 +480,8 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
         </Card>
       </div>
 
-      {/* Bottom Control Panel */}
       <div className="absolute bottom-0 left-0 right-0 z-10 bg-white border-t border-gray-200 p-4">
         <div className="max-w-md mx-auto space-y-4">
-          {/* Pickup Info */}
           <Card>
             <CardContent className="p-4">
               <div className="flex items-start gap-3">
@@ -531,7 +495,6 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
             </CardContent>
           </Card>
 
-          {/* Complete Pickup Button */}
           <Button
             onClick={handleCompletePickup}
             disabled={isCompleting || !currentLocation || !currentAddress}
@@ -547,7 +510,6 @@ export default function PickupInProgress({ userData, pickup, cardId, onBack }: P
             )}
           </Button>
 
-          {/* Current Location Display */}
           {currentLocation && (
             <div className="text-center text-xs text-gray-500 space-y-1">
               <p className="font-medium">📍 Your current location:</p>

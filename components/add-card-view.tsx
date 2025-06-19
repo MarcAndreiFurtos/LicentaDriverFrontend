@@ -28,14 +28,12 @@ interface AddCardViewProps {
   onCardAdded?: (cardId: string) => void
 }
 
-// Your Stripe keys
 const STRIPE_PUBLISHABLE_KEY =
   "pk_test_51RTPNgFawibChNbgqRpgSKarzJlRdDAuGsmxmy13gZFuhkj4UfMilv4Agx2yr3n5eg6pOnwK1xDjAhcJlpj5kSmq003sVhDP08"
 
 const STRIPE_SECRET_KEY =
   "sk_test_51RTPNgFawibChNbgnxmPjWiWOZJXvNDlG0LtWoGQbHsRwK8LHGL4A6O3AJ8NfkCqr06qiD2bjTEbFXxbVVGewwS1005HwHJ4RS"
 
-// Declare Stripe global
 declare global {
   interface Window {
     Stripe: any
@@ -52,7 +50,6 @@ export default function AddCardView({ userData, onBack, onCardAdded }: AddCardVi
   const [elementsReady, setElementsReady] = useState(false)
   const [processingStep, setProcessingStep] = useState("")
 
-  // Refs for Stripe Elements
   const cardElementRef = useRef<HTMLDivElement>(null)
   const stripeRef = useRef<any>(null)
   const elementsRef = useRef<any>(null)
@@ -60,7 +57,6 @@ export default function AddCardView({ userData, onBack, onCardAdded }: AddCardVi
   const scriptLoadedRef = useRef(false)
 
   useEffect(() => {
-    // Check if Stripe is already loaded
     if (window.Stripe && !scriptLoadedRef.current) {
       scriptLoadedRef.current = true
       setStripeLoaded(true)
@@ -68,11 +64,9 @@ export default function AddCardView({ userData, onBack, onCardAdded }: AddCardVi
       return
     }
 
-    // Only load script if not already loaded
     if (!scriptLoadedRef.current) {
       const existingScript = document.querySelector('script[src*="stripe.com/v3"]')
       if (existingScript) {
-        // Script already exists, wait for it to load
         existingScript.addEventListener("load", () => {
           if (!scriptLoadedRef.current) {
             scriptLoadedRef.current = true
@@ -83,7 +77,6 @@ export default function AddCardView({ userData, onBack, onCardAdded }: AddCardVi
         return
       }
 
-      // Load Stripe.js
       const script = document.createElement("script")
       script.src = "https://js.stripe.com/v3/"
       script.async = true
@@ -98,7 +91,6 @@ export default function AddCardView({ userData, onBack, onCardAdded }: AddCardVi
     }
 
     return () => {
-      // Cleanup Stripe Elements
       if (cardElementInstanceRef.current) {
         try {
           cardElementInstanceRef.current.destroy()
@@ -114,10 +106,8 @@ export default function AddCardView({ userData, onBack, onCardAdded }: AddCardVi
     if (!window.Stripe || stripeRef.current) return
 
     try {
-      // Initialize Stripe with publishable key
       stripeRef.current = window.Stripe(STRIPE_PUBLISHABLE_KEY)
 
-      // Create Elements instance
       elementsRef.current = stripeRef.current.elements({
         appearance: {
           theme: "stripe",
@@ -133,7 +123,6 @@ export default function AddCardView({ userData, onBack, onCardAdded }: AddCardVi
         },
       })
 
-      // Create card element with simplified styling
       cardElementInstanceRef.current = elementsRef.current.create("card", {
         style: {
           base: {
@@ -157,14 +146,11 @@ export default function AddCardView({ userData, onBack, onCardAdded }: AddCardVi
         hidePostalCode: true,
       })
 
-      // Mount the card element
       if (cardElementRef.current && cardElementInstanceRef.current) {
-        // Clear any existing content
         cardElementRef.current.innerHTML = ""
 
         cardElementInstanceRef.current.mount(cardElementRef.current)
 
-        // Listen for changes
         cardElementInstanceRef.current.on("change", (event: any) => {
           if (event.error) {
             setError(event.error.message)
@@ -173,7 +159,6 @@ export default function AddCardView({ userData, onBack, onCardAdded }: AddCardVi
           }
         })
 
-        // Listen for ready event
         cardElementInstanceRef.current.on("ready", () => {
           setElementsReady(true)
         })
@@ -191,7 +176,6 @@ export default function AddCardView({ userData, onBack, onCardAdded }: AddCardVi
     }
   }
 
-  // Helper function to make Stripe API calls with secret key
   const stripeApiCall = async (endpoint: string, data: any) => {
     const response = await fetch(`https://api.stripe.com/v1/${endpoint}`, {
       method: "POST",
@@ -217,7 +201,6 @@ export default function AddCardView({ userData, onBack, onCardAdded }: AddCardVi
     setProcessingStep("")
 
     try {
-      // Validate phone number
       if (!phoneNumber || phoneNumber.length < 10) {
         throw new Error("Please enter a valid phone number")
       }
@@ -229,7 +212,6 @@ export default function AddCardView({ userData, onBack, onCardAdded }: AddCardVi
       setProcessingStep("Creating customer account...")
       console.log("Step 1: Creating Stripe Customer...")
 
-      // Step 1: Create Stripe Customer using direct API call
       const customerData = {
         email: userData.email,
         name: `${userData.firstName} ${userData.lastName}`,
@@ -243,7 +225,6 @@ export default function AddCardView({ userData, onBack, onCardAdded }: AddCardVi
       setProcessingStep("Processing card information...")
       console.log("Step 2: Creating payment method with Stripe Elements...")
 
-      // Step 2: Create payment method using Stripe Elements
       const { paymentMethod, error: stripeError } = await stripeRef.current.createPaymentMethod({
         type: "card",
         card: cardElementInstanceRef.current,
@@ -267,7 +248,6 @@ export default function AddCardView({ userData, onBack, onCardAdded }: AddCardVi
       setProcessingStep("Linking card to account...")
       console.log("Step 3: Attaching payment method to customer...")
 
-      // Step 3: Attach payment method to customer using direct API call
       await stripeApiCall(`payment_methods/${paymentMethod.id}/attach`, {
         customer: customer.id,
       })
@@ -277,11 +257,10 @@ export default function AddCardView({ userData, onBack, onCardAdded }: AddCardVi
       setProcessingStep("Finalizing card setup...")
       console.log("Step 4: Sending to backend...")
 
-      // Step 4: Send payment method to backend with customer ID (ONLY backend call)
       const backendData = {
-        cardNumber: paymentMethod.id, // This is the payment method ID
+        cardNumber: paymentMethod.id,
         cardholderName: `${userData.firstName} ${userData.lastName}`,
-        accountId: customer.id, // Use the Stripe Customer ID
+        accountId: customer.id,
         userId: userData.id,
       }
 
@@ -299,7 +278,6 @@ export default function AddCardView({ userData, onBack, onCardAdded }: AddCardVi
       const backendResult = await backendResponse.json()
       console.log("Backend response:", backendResult)
 
-      // Extract card ID from backend response and notify parent
       if (backendResult && backendResult.id && onCardAdded) {
         onCardAdded(backendResult.id.toString())
       }
@@ -334,7 +312,6 @@ export default function AddCardView({ userData, onBack, onCardAdded }: AddCardVi
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 p-4">
       <div className="max-w-md mx-auto">
-        {/* Header */}
         <div className="flex items-center gap-3 mb-6 pt-4">
           <Button variant="ghost" size="icon" onClick={onBack} className="rounded-full">
             <ArrowLeft className="w-6 h-6" />
@@ -380,7 +357,6 @@ export default function AddCardView({ userData, onBack, onCardAdded }: AddCardVi
             )}
 
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Stripe Card Element */}
               <div className="space-y-2">
                 <Label htmlFor="card-element">Card Information</Label>
                 <div
@@ -399,7 +375,6 @@ export default function AddCardView({ userData, onBack, onCardAdded }: AddCardVi
                 )}
               </div>
 
-              {/* Phone Number */}
               <div className="space-y-2">
                 <Label htmlFor="phoneNumber">Phone Number</Label>
                 <Input

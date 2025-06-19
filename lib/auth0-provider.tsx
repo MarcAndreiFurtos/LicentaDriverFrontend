@@ -19,8 +19,8 @@ export default function Auth0ProviderWrapper({ children }: Auth0ProviderWrapperP
       authorizationParams={{
         redirect_uri: redirectUri,
       }}
-      cacheLocation="localstorage" // Keep user logged in across browser sessions
-      useRefreshTokens={true} // Use refresh tokens to maintain login
+      cacheLocation="localstorage"
+      useRefreshTokens={true}
     >
       {children}
     </Auth0Provider>
