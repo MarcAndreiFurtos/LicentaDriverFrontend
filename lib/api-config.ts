@@ -1,11 +1,11 @@
 export const API_CONFIG = {
   development: {
-    baseUrl: "https://localhost:8443",
+    baseUrl: "https://licentabackend-f2dpe8f5fjh8bff4.germanywestcentral-01.azurewebsites.net:8080",
     timeout: 10000,
-    selfSignedCert: true,
+    selfSignedCert: false,
   },
   production: {
-    baseUrl: process.env.NEXT_PUBLIC_API_URL || "https://your-production-api.com",
+    baseUrl: "https://licentabackend-f2dpe8f5fjh8bff4.germanywestcentral-01.azurewebsites.net:8080",
     timeout: 10000,
     selfSignedCert: false,
   },
@@ -49,22 +49,7 @@ export const apiCall = async (endpoint: string, options: RequestInit = {}) => {
     console.log(`API response status: ${response.status}`)
     return response
   } catch (error) {
-    if (config.selfSignedCert && error instanceof TypeError) {
-      console.error(
-        `
-        SSL Certificate Error: Your Spring Boot backend is using a self-signed certificate.
-        
-        To fix this:
-        1. Visit https://localhost:8443/api/stripe/${endpoint.split("/").pop()} in your browser to accept the certificate
-        2. Or add CORS configuration to your Spring Boot application
-        3. Or configure your Spring Boot app to use HTTP for development
-        
-        Original error:`,
-        error,
-      )
-    } else {
-      console.error(`API call failed for ${endpoint}:`, error)
-    }
+    console.error(`API call failed for ${endpoint}:`, error)
     throw error
   }
 }

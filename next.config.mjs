@@ -15,7 +15,7 @@ const nextConfig = {
     return process.env.NODE_ENV === 'development' ? [
       {
         source: '/api/backend/:path*',
-        destination: 'https://localhost:8443/api/:path*',
+        destination: 'https://licentabackend-f2dpe8f5fjh8bff4.germanywestcentral-01.azurewebsites.net:8080/api/:path*',
       },
     ] : []
   },
