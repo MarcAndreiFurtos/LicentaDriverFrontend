@@ -24,6 +24,7 @@ import GoogleMap from "./components/google-map"
 import AddCardView from "./components/add-card-view"
 import ProfilePictureUpload from "./components/profile-picture-upload"
 import { apiCall } from "./lib/api-config"
+// @ts-ignore
 import type { google } from "googlemaps"
 import PickupInProgress from "./components/pickup-in-progress"
 import CardSelectionPopup from "./components/card-selection-popup"
